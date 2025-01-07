@@ -1,7 +1,6 @@
 import * as acorn from 'acorn-loose';
 import Fs from 'fs';
 import Path from 'path';
-import { WhatIs } from './helpers.js';
 
 const VERSION = '1.0.0';
 
@@ -155,13 +154,10 @@ class JSHypertextPreprocessor {
      */
     constructor(initialContext = null) {
         if (initialContext) {
-            switch(WhatIs(initialContext)) {
-                case 'map':
-                    this.#initialContext = initialContext;
-                    break;
-                case 'object':
-                    this.#initialContext = new Map(Object.entries(initialContext));
-                    break;
+            if (initialContext instanceof Map) {
+                this.#initialContext = initialContext;
+            } else if (typeof initialContext === 'object') {
+                this.#initialContext = new Map(Object.entries(initialContext));
             }
         }
     }

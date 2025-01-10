@@ -1,0 +1,18 @@
+{
+    "editor.codeActionsOnSave": {
+        "source.fixAll.eslint": "explicit"
+    },
+    "eslint.format.enable": true,
+    "eslint.lintTask.enable": true,
+    "eslint.validate": [
+        "html",
+        "json",
+        "javascript"
+    ],
+    "explorer.compactFolders": false,
+    "files.associations": {
+        "*.jhp": "html",
+        "*.json": "jsonc"
+    },
+    "files.eol": "\n"
+}

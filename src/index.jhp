@@ -1,0 +1,14 @@
+<script>
+    let title = 'JHP v1.5';
+    $include('./partials/header.html');
+</script>
+
+<h1>JHP</h1>
+
+<p>
+    This is a demo of the JHP templating engine.
+</p>
+
+<script>
+    $include('./partials/footer.html');
+</script>

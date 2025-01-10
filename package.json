@@ -1,0 +1,13 @@
+{
+    "type": "module",
+    "devDependencies": {
+        "@html-eslint/eslint-plugin": "^0.32.0",
+        "@html-eslint/parser": "^0.32.0",
+        "eslint": "^9.17.0",
+        "eslint-plugin-jsonc": "^2.18.2",
+        "jsonc-eslint-parser": "^2.4.0"
+    },
+    "dependencies": {
+        "acorn-loose": "^8.4.0"
+    }
+}

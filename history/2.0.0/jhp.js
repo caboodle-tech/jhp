@@ -626,8 +626,21 @@ class JSHypertextPreprocessor {
      * @private
      */
     #resolvePath(file, currentDir) {
+        // Check if it's a root-relative path (starts with /)
+        if (file.startsWith('/')) {
+            // Remove the leading slash and resolve from the root directory
+            const relativeToRoot = file.substring(1);
+            const resolvedPath = Path.resolve(this.#rootDir, relativeToRoot);
+            
+            if (Fs.existsSync(resolvedPath)) {
+                return resolvedPath;
+            }
+            return null;
+        }
+        
+        // If it's already an absolute path, return it directly
         if (Path.isAbsolute(file)) {
-            return file;
+            return Fs.existsSync(file) ? file : null;
         }
 
         // Try resolving relative to current directory

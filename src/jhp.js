@@ -1,16 +1,18 @@
 /* eslint-disable */
-/* eslint-disable no-param-reassign */
+ 
 import * as acornLoose from 'acorn-loose';
-import Fs from 'fs';
+import Fs, { realpath } from 'fs';
 import Path from 'path';
+import { SimpleHtmlParser } from './simple-html-parser.js';
 
-const VERSION = '1.5.0';
+const VERSION = '2.0.0';
 
 /**
- * JavaScript Hypertext Preprocessor (JSHypertextPreprocessor) is a preprocessor that handles HTML
- * files with embedded JavaScript, similar to how PHP manages templates. It provides dynamic
- * preprocessing, managing context, variables, and includes while ensuring security and structure,
- * bringing PHP-like templating to JavaScript.
+ * JavaScript Hypertext Preprocessor (JHP) is a preprocessor that handles HTML files with embedded
+ * JavaScript, similar to how PHP manages templates. It provides dynamic preprocessing, managing
+ * context, variables, and includes while ensuring security and structure, bringing PHP-like
+ * templating to JavaScript.
+ * @module JSHypertextPreprocessor
  */
 class JSHypertextPreprocessor {
 
@@ -44,7 +46,7 @@ class JSHypertextPreprocessor {
             if (this.#currentContext.has(key)) {
                 const constantError = `<< Error: Variable '${key}' already declared, unable to declare as constant. >>`;
                 if (this.#htmlOutputBuffer.open) {
-                    this.#htmlOutputBuffer.value.push(constantError);
+                    this.#htmlOutputBuffer.value += constantError;
                 } else {
                     this.#currentBuffer += constantError;
                 }
@@ -65,7 +67,7 @@ class JSHypertextPreprocessor {
             // If the value is different, log an error into the current buffer
             const constantError = `<< Error: Attempted to redeclare defined constant '${key}'. >>`;
             if (this.#htmlOutputBuffer.open) {
-                this.#htmlOutputBuffer.value.push(constantError);
+                this.#htmlOutputBuffer.value += constantError;
             } else {
                 this.#currentBuffer += constantError;
             }
@@ -73,7 +75,7 @@ class JSHypertextPreprocessor {
         echo: (...args) => {
             const content = args.join('');
             if (this.#htmlOutputBuffer.open) {
-                this.#htmlOutputBuffer.value.push(content);
+                this.#htmlOutputBuffer.value += content;
             } else {
                 this.#currentBuffer += content;
             }
@@ -83,24 +85,24 @@ class JSHypertextPreprocessor {
         },
         obClose: () => {
             this.#htmlOutputBuffer.open = false;
-            return this.#htmlOutputBuffer.value.join('').trim();
+            return this.#htmlOutputBuffer.value.trim();
         },
         obOpen: () => {
-            this.#htmlOutputBuffer.value = [];
+            this.#htmlOutputBuffer.value = '';
             this.#htmlOutputBuffer.open = true;
         },
         obStatus: () => {
             return this.#htmlOutputBuffer.open;
         },
         version: () => {
-            return `JHP Version ${VERSION}`;
+            return this.version();
         }
     };
 
     /** @type {Object} Manages buffered HTML output for template sections */
     #htmlOutputBuffer = {
         open: false,
-        value: []
+        value: ''
     };
 
     /** @type {Map<string, string>} Cache for included files */
@@ -108,6 +110,12 @@ class JSHypertextPreprocessor {
 
     /** @type {Map<string, any>} Initial context values provided at instantiation */
     #initialConstants = new Map();
+
+    /** @type {Set<Function>} Stores pre and post processors for template processing */
+    #processors = {
+        pre: new Set(),
+        post: new Set()
+    };
 
     /** @type {Object} Regular expressions used for parsing and processing */
     #regex = {
@@ -139,13 +147,10 @@ class JSHypertextPreprocessor {
         ],
         declaration: /\b(?:const|let|var)\s+(.+?);/g,
         functionDeclaration: /function\s+([a-zA-Z_$][\w$]*)/,
-        htmlComments: /<!--[\s\S]*?-->/g,
         preprocess: /\$(\w+)/g,
-        preTagsAndEmptyLines: /(<pre\b[^>]*>[\s\S]*?<\/pre>)/,
         reassignment: /\b([a-zA-Z_$][\w$]*)\s*=\s*([^;]+);/g,
+        regexSpecialCharactersEscape: /[.*+?^${}()|[\]\\]/g,
         templateLiteralEscape: /\$\{/g,
-        urlAttributePattern: /(href|src)\s*=\s*["'](\/[^"']*?)["']/g,
-        urlWithProtocol: /^(?:http|https|ftp|mailto|tel|data):/i,
         variables: /([a-zA-Z_$][\w$]*)\s*(?:=\s*([^,;]+))?/g
     };
 
@@ -154,6 +159,12 @@ class JSHypertextPreprocessor {
 
     /** @type {string} Root directory for file resolution */
     #rootDir = '';
+
+    /** @type {Set<Function>} Stores temporary pre and post processors for template processing */
+    #tmpProcessors = {
+        pre: new Set(),
+        post: new Set()
+    };
 
     /**
      * Creates a new JSHypertextPreprocessor instance.
@@ -167,6 +178,43 @@ class JSHypertextPreprocessor {
                 this.#initialConstants = new Map(Object.entries(globalConstants));
             }
         }
+    }
+
+    /**
+     * Adds one or more preprocessor functions to the processing pipeline.
+     * @param {Function|Function[]} preProcessors Preprocessor function(s) to add
+     */
+    addPreProcessor(preProcessors) {
+        if (Array.isArray(preProcessors)) {
+            for (const preProcessor of preProcessors) {
+                this.#processors.pre.add(preProcessor);
+            }
+        } else {
+            this.#processors.pre.add(preProcessors);
+        }
+    }
+
+    /**
+     * Adds one or more postprocessor functions to the processing pipeline.
+     * @param {Function|Function[]} postProcessors Postprocessor function(s) to add
+     */
+    addPostProcessor(postProcessors) {
+        if (Array.isArray(postProcessors)) {
+            for (const postProcessor of postProcessors) {
+                this.#processors.post.add(postProcessor);
+            }
+        } else {
+            this.#processors.post.add(postProcessors);
+        }
+    }
+
+    /**
+     * Escapes special characters in a string to make it safe for use in a regular expression.
+     * @param {string} string String to escape
+     * @returns {string} Escaped string
+     */
+    escapeRegExp(string) {
+        return string.replace(this.#regex.regexSpecialCharactersEscape, '\\$&');
     }
 
     /**
@@ -202,9 +250,8 @@ class JSHypertextPreprocessor {
         }
 
         // Normal include, output directly
-        const parsedContent = this.#processFile(resolvedPath);
+        this.#processFile(resolvedPath);
         this.#cwd = previousCwd;
-        return parsedContent;
     };
 
     /**
@@ -219,14 +266,25 @@ class JSHypertextPreprocessor {
     }
 
     /**
-     * Perform various preprocessing steps on raw file content.
-     * @param {string} code Raw file content to process
-     * @returns {string} Preprocessed content with resolved paths and processed scripts
+     * Perform various preprocessing steps on the parsed HTML DOM structure.
+     * @param {Node} dom Parsed HTML DOM structure.
      * @private
      */
-    #preprocessFile(code) {
-        // Remove all HTML comments first; removes commented out script blocks and shortens the code
-        return code.replace(this.#regex.htmlComments, '');
+    #preprocessFile(dom) {
+        for (const processor of this.#tmpProcessors.pre) {
+            processor({
+                cwd: this.#cwd,
+                dom,
+                relPath: this.#relPath
+            });
+        }
+        for (const processor of this.#processors.pre) {
+            processor({
+                cwd: this.#cwd,
+                dom,
+                relPath: this.#relPath
+            });
+        }
     }
 
     /**
@@ -361,15 +419,48 @@ class JSHypertextPreprocessor {
      * @param {string} cwd Current working directory for file resolution
      * @returns {string} Processed template content
      */
-    process(file, relPath = null, cwd = '') {
+    process(file, options = {}) {
+        // Define default options
+        const defaultOptions = {
+            cwd: null,
+            relPath: null,
+            processors: {
+                pre: [],
+                post: []
+            }
+        };
+
+        // Merge defaults with provided options
+        const mergedOptions = { ...defaultOptions, ...options };
+
+        // Extract specific options
+        const {
+            cwd,
+            relPath,
+            processors
+        } = mergedOptions;
+
+        // Get a new parser instance
+        const parser = new SimpleHtmlParser();
+
         // Reset state for new file processing
         this.#constants.clear();
         this.#currentBuffer = '';
         this.#currentContext.clear();
         this.#htmlOutputBuffer.open = false;
-        this.#htmlOutputBuffer.value = [];
+        this.#htmlOutputBuffer.value = '';
         this.#includes.clear();
         this.#relPath = relPath;
+        this.#tmpProcessors.post.clear();
+        this.#tmpProcessors.pre.clear();
+
+        // Add temporary processors if provided
+        for (const processor of processors.pre) {
+            this.#tmpProcessors.pre.add(processor);
+        }
+        for (const processor of processors.post) {
+            this.#tmpProcessors.post.add(processor);
+        }
 
         // Initialize constants with any provided global constants
         for (const [key, value] of this.#initialConstants.entries()) {
@@ -384,51 +475,59 @@ class JSHypertextPreprocessor {
 
         // Process the file and return the result
         this.#processFile(file);
-        return this.#postProcessFile(this.#currentBuffer.trim());
+
+        const dom = parser.parse(this.#currentBuffer.trim());
+        this.#postProcessFile(dom);
+        return dom.toHtml();
     }
 
     /**
-     * Processes a single file by reading its content and processing the template.
+     * Processes a single file by parsing it into a DOM and processing the template.
      * @param {string} file Path to the file to process
      * @returns {string|undefined} Processed content or error message
      * @private
      */
     #processFile(file) {
-        let template;
-
+        const parser = new SimpleHtmlParser();
+        const scriptTags = parser.getSpecialTags();
+        
         try {
-            template = Fs.readFileSync(file, 'utf8') || '';
-            template = this.#preprocessFile(template);
-         
+            const templateText = Fs.readFileSync(file, 'utf8') || '';
+            const dom = parser.parse(templateText);
+            this.#preprocessFile(dom);
+            this.#processTemplate(dom.toHtml(), scriptTags);
         } catch (err) {
-            return `<< Error: Unable to read file ${file} >>`;
+            return `<< Error: Unable to read file ${file}: ${err.message} >>`;
         }
-
-        this.#processTemplate(template);
     }
 
     /**
      * Processes a template string by handling script blocks and HTML content.
      * @param {string} template Template string to process
+     * @param {String[]} tags Array of possible script tags
      * @private
      */
-    #processTemplate(template) {
+    #processTemplate(template, tags) {
         let lastIndex = 0;
+
+        // Create a regex pattern that matches any of the tags
+        const tagPattern = tags.map(tag => this.escapeRegExp(tag)).join('|');
+
         // We must declare this here to avoid issues with the regex lastIndex property
-        const regex = /<script>([\s\S]*?)<\/script>/g;
+        const regex = new RegExp(`<(${tagPattern})>([\\s\\S]*?)<\\/\\1>`, 'g');
         let match;
 
         while ((match = regex.exec(template)) !== null) {
             // Add HTML content before script block to output
             const htmlContent = template.slice(lastIndex, match.index);
             if (this.#htmlOutputBuffer.open) {
-                this.#htmlOutputBuffer.value.push(htmlContent);
+                this.#htmlOutputBuffer.value += htmlContent;
             } else {
                 this.#currentBuffer += htmlContent;
             }
 
             // Process script block
-            let code = this.#tokenReplacement(match[1]);
+            let code = this.#tokenReplacement(match[2]);
             try {
                 code = this.#preprocessScriptBlock(code);
                 const wrapper = new Function('$', `${code}`);
@@ -438,52 +537,85 @@ class JSHypertextPreprocessor {
                 this.#currentBuffer += `<< Error: ${err.message}. >>`;
             }
 
-             
             lastIndex = regex.lastIndex;
         }
 
         // Add remaining HTML content after last script block
         const remainingHtml = template.slice(lastIndex);
         if (this.#htmlOutputBuffer.open) {
-            this.#htmlOutputBuffer.value.push(remainingHtml);
+            this.#htmlOutputBuffer.value += remainingHtml;
         } else {
             this.#currentBuffer += remainingHtml;
         }
+
+        /*
+        This is as close as I could get to using the DOM structure for processing
+        but it's not working as expected. I'll revisit this later to see if I can
+        get it to work properly. The issue we need process the node in order but
+        if a script tag is not at the root of an element, we don't see it and
+        toHtml just returns the inner content.
+        
+        for (const node of dom.children) {
+            if (!node.scriptBlock) {
+                // Process HTML content
+                if (this.#htmlOutputBuffer.open) {
+                    this.#htmlOutputBuffer.value.push(node.toHtml());
+                } else {
+                    this.#currentBuffer += node.toHtml();
+                }
+                continue;
+            }
+            
+            // Remove script blocks from the DOM; both open and close tags
+            node.remove();
+
+            if (node.type === 'tag-close') {
+                continue;
+            }
+            
+            // Process script
+            let scriptContent = node.innerHtml();
+            try {
+                scriptContent = this.#tokenReplacement(scriptContent);
+                scriptContent = this.#preprocessScriptBlock(scriptContent);
+
+                // Check for potentially unsafe code and skip processing if found
+                if (!this.isCodeGenerallySafe(scriptContent)) {
+                    this.#currentBuffer += `<< Error: Potentially unsafe code detected. >>`;
+                    continue;
+                }
+
+                const wrapper = new Function('$', `${scriptContent}`);
+                wrapper(this.#dollar);
+            } catch (err) {
+                // Log errors and continue processing
+                console.error(err);
+                this.#currentBuffer += `<< Error: ${err.message}. >>`;
+            }
+        }
+        */
     }
 
     /**
-     * Perform various postprocessing steps on raw file content.
-     * @param {string} code Final output code to process
-     * @returns {string} Processed code with root-relative URLs resolved
+     * Perform various postprocessing steps on the DOM.
+     * @param {Node} dom The DOM to process
      * @private
      */
-    #postProcessFile(code) {
-        // Process root-relative URLs in the final output
-        if (this.#relPath !== null) {
-            code = code.replace(this.#regex.urlAttributePattern, (match, attr, url) => {
-                // Skip URLs that are protocol-relative or absolute
-                if (url.startsWith('//') || this.#regex.urlWithProtocol.test(url)) {
-                    return match;
-                }
-                const relPath = this.#relPath === '' ? './' : this.#relPath;
-                return `${attr}="${relPath}${url.slice(1)}"`;
+    #postProcessFile(dom) {
+        for (const processor of this.#tmpProcessors.post) {
+            processor({
+                cwd: this.#cwd,
+                dom,
+                relPath: this.#relPath
             });
         }
-
-        const segments = code.split(this.#regex.preTagsAndEmptyLines);
-        code = segments.map((segment, i) => {
-            // Even indices are outside <pre>, odd indices are <pre> blocks
-            if (i % 2 === 0) {
-                // Remove empty lines from non-pre content
-                return segment.split('\n')
-                    .filter((line) => { return line.trim(); })
-                    .join('\n');
-            }
-            // Keep <pre> content unchanged
-            return segment;
-        }).join('');
-
-        return code;
+        for (const processor of this.#processors.post) {
+            processor({
+                cwd: this.#cwd,
+                dom,
+                relPath: this.#relPath
+            });
+        }
     }
 
     /**
@@ -564,6 +696,10 @@ class JSHypertextPreprocessor {
         return code.replace(this.#regex.preprocess, (match, key) => {
             return key in this.#dollar ? `$.${key}` : match;
         });
+    }
+
+    version() {
+        return `JHP v${VERSION}`;
     }
 
     /**

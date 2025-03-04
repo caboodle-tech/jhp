@@ -1,7 +1,7 @@
-<script>
+<s_>
     let title = 'JHP v1.5';
     $include('./partials/header.html');
-</script>
+</s_>
 
 <h1>JHP</h1>
 
@@ -9,6 +9,6 @@
     This is a demo of the JHP templating engine.
 </p>
 
-<script>
+<s_>
     $include('./partials/footer.html');
-</script>
+</s_>

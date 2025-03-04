@@ -2,9 +2,9 @@
 
 ## Introduction
 
-JS Hypertext Preprocessor (JHP) is a **developer-focused JavaScript templating engine** designed to rival static site generators by leveraging **native JavaScript** instead of introducing custom templating syntaxes. Inspired by PHP, JHP allows developers to use raw` HTML and familiar JavaScript to build dynamic templates for static site generation during local development.
+JS Hypertext Preprocessor (JHP) is a **developer-focused JavaScript templating engine** designed to rival static site generators by leveraging **native JavaScript** instead of introducing custom templating syntaxes. Inspired by PHP, JHP allows developers to use raw HTML and familiar JavaScript to build dynamic templates for static site generation during local development.
 
-**Note:** JHP is not intended to be used as a production server due to potential security concerns. It is best suited for local development environments and static site generation workflows.
+**Note:** JHP can be used as a production server, similar to PHP, but please exercise caution as it has not been fully tested for that use and may have potential security concerns. It is primarily designed for local development environments and static site generation workflows.
 
 ## Features
 
@@ -12,15 +12,15 @@ JS Hypertext Preprocessor (JHP) is a **developer-focused JavaScript templating e
 - Supports **PHP-like behaviors**, such as variable redeclaration across script blocks.
 - Provides a simplified **output buffering system** with `$obOpen` and `$obClose`.
 - Includes flexible **file inclusion** for partials and reusable templates.
-- Prevents unsafe operations with built-in security checks.
+- Built-in security check that attempt to prevent unsafe code execution.
 
 ## How It Works
 
-JHP processes files (commonly `.jhp` files) containing raw HTML with `<script>` blocks, transforming them into static HTML. The engine specifically executes `<script>` tags **without attributes** in a server-side context, enabling dynamic content generation. To include frontend JavaScript intended for the browser, ensure your `<script>` tags have at least one attribute (e.g., `<script type="text/javascript">`), as JHP will ignore such tags.
+JHP processes files &ndash; commonly `.jhp` files but you can choose the extension &ndash; containing raw HTML with special `<script>` blocks, transforming them into static HTML. The engine specifically executes `<script>` or `<s_>` tags **without attributes** in a server-side context, enabling dynamic content generation. To include frontend JavaScript intended for the browser, ensure your `<script>` tags have at least one attribute (e.g., `<script type="text/javascript">`), as JHP will ignore such tags.
 
 This flexibility allows developers to:
-- Use built-in `$` functions within server-side `<script>` blocks to manage output, include files, or define constants.
-- Declare variables or functions in one `<script>` block and reuse them in later blocks, maintaining context across the file.
+- Use built-in `$` functions within server-side `<script>` or `<s_>` blocks to manage output, include files, or define constants.
+- Declare variables or functions in one `<script>` or `<s_>` block and reuse them in later blocks, maintaining context across the file.
 - Capture and reuse parts of the output with the output buffer.
 - Modularize templates with nested file includes.
 
@@ -120,6 +120,8 @@ The home page's content here...
 </html>
 ```
 
+**Note:** You can replace the `<script>` tags with `<s_>` tags if you prefer the shorter syntax. The engine will process both tags in the same way. While it is technically possible to register any tag name for processing, this feature is not currently exposed through the public API. If you are interested in this capability, please open an issue on our repository so we can gauge community interest.
+
 ## Built-in `$` Functions
 
 The `$` object provides several utility methods for use in templates:
@@ -128,7 +130,6 @@ Function | Description
 ---|---
 `$context(key, value)` | Adds or updates a variables value in the current context. Used internally but can be used to preemptively load variables.
 `$define(key, value)`  | Defines a true constant variable. Displays an error if redefined in any context.
-`$default(key, value)` | Sets a default value for a variable if it is not already defined.
 `$echo(...args)`       | Outputs content directly to the compiled page.
 `$include(file)`       | Includes another file (template) and processes it within the current context; use relative paths.
 `$obOpen()`            | Starts an output buffer to capture content.
@@ -138,25 +139,25 @@ Function | Description
 
 ## Installation
 
-To use JHP, include it as part of your build process or local development environment. Example usage in a Node.js script:
+To use JHP, include it as part of your build process for generating static pages, or integrate it into a server to dynamically build responses. Example usage in a Node.js script:
 
 ```js
 import JHP from 'jhp';
 
 const jhp = new JHP();
-const result = jhp.process('./index.html', null, './');
+const result = jhp.process('./index.html');
 console.log(result);
 ```
 
 ## Caution
 
-JHP is designed for local development only. While it is technically possible to use it as a production server, **this is not recommended** due to limited security safeguards against malicious code and lack of optimization for high-traffic environments. For production, generate static HTML files using JHP and serve them with a proper web server.
+**Caution:** JHP is primarily designed for local development and static site generation workflows. While it can be used as a production server, please proceed with caution due to potential security concerns and lack of extensive testing in high-traffic environments. It is recommended to thoroughly test and review your setup if you choose to use JHP in production.
 
 ## Why Choose JHP?
 
-- **Familiar and fast:** Use native HTML, CSS, and JavaScript—no need for custom templating languages or complex configurations. Just write and build.
-- **Lightweight and focused:** With only one development dependency (acorn), JHP is far simpler than engines requiring multiple plugins or libraries.
-- **Flexible structure:** No rigid directory or file structure is enforced—organize your project in a way that works best for you.
+- **Familiar and fast:** Use native HTML, CSS, and JavaScript &ndash; no need for custom templating languages or complex configurations. Just write and build.
+- **Lightweight and focused:** With only one development dependency ([acorn](https://www.npmjs.com/package/acorn)), JHP is far simpler than engines requiring multiple plugins or libraries.
+- **Flexible structure:** No rigid directory or file structure is enforced &ndash; organize your project in a way that works best for you.
 - **Encourages native development:** Fully leverage HTML, CSS, and JavaScript as they are, with support for modern CSS features like nesting. JHP doesn’t require preprocessing tools but allows seamless integration if your project needs them.
 - **Modular and maintainable:** Reuse components with file includes and shared templates to keep your code clean and scalable.
 

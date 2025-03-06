@@ -890,9 +890,9 @@ class SimpleHtmlParser {
 
     /**
       * Creates a new parser instance.
-      * @param {string[]} [specialTags=['script', 's_']] - Tags where content is treated as text
+      * @param {string[]} [specialTags=['jhp', 's_']] - Tags where content is treated as text
       */
-    constructor(specialTags = ['script', 's_']) {
+    constructor(specialTags = ['jhp', 's_']) {
         this.#specialTags = specialTags;
     }
 

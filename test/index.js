@@ -33,11 +33,28 @@ if (!Fs.existsSync(outputDir)) {
     Fs.mkdirSync(outputDir, { recursive: true });
 }
 
-// Process the JHP file
+const cssDir = Path.join(__dirname, 'www/css');
+if (!Fs.existsSync(cssDir)) {
+    Fs.mkdirSync(cssDir, { recursive: true });
+}
+
+// Process the JHP files
 try {
-    const filePath = Path.join(__dirname, 'src', 'index.jhp');
-    const processed = jhp.process(filePath);
-    Fs.writeFileSync(Path.join(outputDir, 'index.html'), processed);
+    const cssSrcPath = Path.join(__dirname, 'src/css/main.css');
+    const cssDestPath = Path.join(cssDir, 'main.css');
+    Fs.copyFileSync(cssSrcPath, cssDestPath);
+
+    const srcDir = Path.join(__dirname, 'src');
+    const files = Fs.readdirSync(srcDir).filter((file) => {
+        return file.endsWith('.jhp');
+    });
+
+    files.forEach((file) => {
+        const filePath = Path.join(srcDir, file);
+        const processed = jhp.process(filePath);
+        const outputFilePath = Path.join(outputDir, file.replace('.jhp', '.html'));
+        Fs.writeFileSync(outputFilePath, processed);
+    });
 } catch (error) {
     console.error(error);
     exit(1);

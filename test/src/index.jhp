@@ -1,14 +1,18 @@
-<s_>
-    let title = 'JHP v1.5';
+<script>
+    let title = 'Home';
     $include('./partials/header.html');
-</s_>
+</script>
 
-<h1>JHP</h1>
+<h1>Welcome!</h1>
 
 <p>
-    This is a demo of the JHP templating engine.
+    This is a standard JHP file that has been compiled to HTML. It does not use any advanced features of JHP, only <code>$include</code> to include the header and footer.
 </p>
 
-<s_>
+<p>
+    View the original source code of this page to see how the content is captured and rendered using these functions.
+</p>
+
+<script>
     $include('./partials/footer.html');
-</s_>
+</script>

@@ -11,8 +11,8 @@
     ],
     "explorer.compactFolders": false,
     "files.associations": {
-        "*.jhp": "html",
-        "*.json": "jsonc"
+        ".jhp": "html",
+        ".json": "jsonc"
     },
     "files.eol": "\n"
 }

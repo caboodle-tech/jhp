@@ -13,16 +13,17 @@ JS Hypertext Preprocessor (JHP) is a **developer-focused JavaScript templating e
 - Provides a simplified **output buffering system** with `$obOpen` and `$obClose`.
 - Includes flexible **file inclusion** for partials and reusable templates.
 - Built-in security check that attempt to prevent unsafe code execution.
+- Can be used as a **view engine** for server-side rendering.
 
 ## How It Works
 
-JHP processes files &ndash; commonly `.jhp` files but you can choose the extension &ndash; containing raw HTML with special `<script>` blocks, transforming them into static HTML. The engine specifically executes `<script>` or `<s_>` tags **without attributes** in a server-side context, enabling dynamic content generation. To include frontend JavaScript intended for the browser, ensure your `<script>` tags have at least one attribute (e.g., `<script type="text/javascript">`), as JHP will ignore such tags.
-
-This flexibility allows developers to:
-- Use built-in `$` functions within server-side `<script>` or `<s_>` blocks to manage output, include files, or define constants.
-- Declare variables or functions in one `<script>` or `<s_>` block and reuse them in later blocks, maintaining context across the file.
+JHP processes files &ndash; commonly `.jhp` files but you can choose the extension by what file you hand to the engine &ndash; containing raw HTML with special `<jhp>` blocks, transforming them into static HTML. The engine specifically executes `<jhp>` or `<s_>` tags **without attributes** in a server-side context, enabling dynamic content generation. This flexibility allows developers to:
+- Use built-in `$` functions within server-side `<jhp>` or `<s_>` blocks to manage output, include files, or define constants.
+- Declare variables or functions in one `<jhp>` or `<s_>` block and reuse them in later blocks, maintaining context across the file.
 - Capture and reuse parts of the output with the output buffer.
 - Modularize templates with nested file includes.
+
+**Note:** The `<script>` tag is included by default as a JHP tag to ensure code editors automatically highlight and provide IntelliSense for JHP blocks. In the future I hope to add IDE support for JHP tags.
 
 ## Example Setup
 
@@ -120,7 +121,7 @@ The home page's content here...
 </html>
 ```
 
-**Note:** You can replace the `<script>` tags with `<s_>` tags if you prefer the shorter syntax. The engine will process both tags in the same way. While it is technically possible to register any tag name for processing, this feature is not currently exposed through the public API. If you are interested in this capability, please open an issue on our repository so we can gauge community interest.
+**Note:** You can replace the `<jhp>` tags with `<s_>` tags if you prefer the shorter syntax. The engine will process both tags in the same way. Additionally, you can register any custom tag when constructing the JHP object. However, if you choose to register `<script>` as a JHP tag, ensure your `<script>` tags have at least one attribute (e.g., `<script type="text/javascript">`) to include frontend JavaScript intended for the browser, as JHP will ignore tags with attributes.
 
 ## Built-in `$` Functions
 
@@ -130,12 +131,18 @@ Function | Description
 ---|---
 `$context(key, value)` | Adds or updates a variables value in the current context. Used internally but can be used to preemptively load variables.
 `$define(key, value)`  | Defines a true constant variable. Displays an error if redefined in any context.
-`$echo(...args)`       | Outputs content directly to the compiled page.
+`$echo(content)`       | Outputs content directly to the compiled page; accepts only one argument.
+`$if(<condition>)`     | Starts an if block that may be followed by `$elseif()` or `$else()` blocks.
+`$elseif(<condition>)` | Provides an alternative condition for an if block. May be followed by another `$elseif()` or `$else()` block.
+`$else()`              | The default block for an if or if-elseif statement if no other conditions are met.
+`$end()`               | Ends a conditional block. Must be used after `$if()`, `$elseif()`, or `$else()` to properly close the conditional block.
 `$include(file)`       | Includes another file (template) and processes it within the current context; use relative paths.
 `$obOpen()`            | Starts an output buffer to capture content.
 `$obClose()`           | Closes the output buffer and returns its content as a string.
 `$obStatus()`          | Checks if the output buffer is currently open.
 `$version()`           | Returns the JHP version string.
+
+For more information on how to properly use these functions, refer to the [example files](./test/src/) in the `test` directory.
 
 ## Installation
 
@@ -145,13 +152,13 @@ To use JHP, include it as part of your build process for generating static pages
 import JHP from 'jhp';
 
 const jhp = new JHP();
-const result = jhp.process('./index.html');
-console.log(result);
+const html = jhp.process('./template.jhp');
+console.log(html);
 ```
 
 ## Caution
 
-**Caution:** JHP is primarily designed for local development and static site generation workflows. While it can be used as a production server, please proceed with caution due to potential security concerns and lack of extensive testing in high-traffic environments. It is recommended to thoroughly test and review your setup if you choose to use JHP in production.
+JHP is primarily designed for local development, static site generation, and for use as a view engine. While it can be used as a production server, please proceed with caution due to potential security concerns and lack of extensive testing in high-traffic environments. It is recommended to thoroughly test and review your setup if you choose to use JHP live on a production server.
 
 ## Why Choose JHP?
 

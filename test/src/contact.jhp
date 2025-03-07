@@ -13,6 +13,7 @@
 <script>
     let today = new Date();
     let day = today.getDate();
+    $echo(today);
     $if(day % 3 === 0);
 </script>
 

@@ -33,6 +33,17 @@ class Node {
      */
     parent = null;
 
+    /** @type {Object} Regular expressions used for nodes */
+    #regex = {
+        notSelector: /:not\(([^)]+)\)/g,
+        queryAttributeMatches: /\[([^\]]+)\]/g,
+        queryClassMatches: /\.([a-zA-Z0-9\-_]+)/g,
+        queryIdMatch: /#([a-zA-Z0-9\-_]+)/,
+        querySelectorParts: /([a-zA-Z0-9\-_]+)?(\#[a-zA-Z0-9\-_]+)?(\.[a-zA-Z0-9\-_]+)*(\[[^\]]+\])*/g,
+        queryTagMatch: /^[a-zA-Z0-9\-_]+/,
+        rawValue: /^["'](.*)["']$/
+    };
+
     /**
      * @type {string} Node type: 'comment', 'text', 'root', 'tag-close', 'tag-open'
      */
@@ -245,14 +256,14 @@ class Node {
         const results = [];
 
         // Parse basic selectors
-        const selectorParts = selector.match(/([a-zA-Z0-9\-_]+)?(\#[a-zA-Z0-9\-_]+)?(\.[a-zA-Z0-9\-_]+)*(\[[^\]]+\])*/g)
+        const selectorParts = selector.match(this.#regex.querySelectorParts)
             ?.filter(Boolean)
             ?.join('') || '';
 
-        const tagMatch = selectorParts.match(/^[a-zA-Z0-9\-_]+/);
-        const idMatch = selectorParts.match(/#([a-zA-Z0-9\-_]+)/);
-        const classMatches = selectorParts.match(/\.([a-zA-Z0-9\-_]+)/g);
-        const attrMatches = selectorParts.match(/\[([^\]]+)\]/g);
+        const tagMatch = selectorParts.match(this.#regex.queryTagMatch);
+        const idMatch = selectorParts.match(this.#regex.queryIdMatch);
+        const classMatches = selectorParts.match(this.#regex.queryClassMatches);
+        const attrMatches = selectorParts.match(this.#regex.queryAttributeMatches);
 
         const tagName = tagMatch ? tagMatch[0] : null;
         const id = idMatch ? idMatch[1] : null;
@@ -268,7 +279,7 @@ class Node {
                 if (attrContent.includes('=')) {
                     const [name, rawValue] = attrContent.split('=');
                     // Remove quotes from value if present
-                    const value = rawValue.replace(/^["'](.*)["']$/, '$1');
+                    const value = rawValue.replace(this.#regex.rawValue, '$1');
                     attributes.push({ name, value, hasValue: true });
                 } else {
                     // Just check for attribute existence
@@ -436,7 +447,7 @@ class Node {
 
         // Extract :not() selectors
         const notSelectors = [];
-        const mainSelector = selector.replace(/:not\(([^)]+)\)/g, (match, notSelector) => {
+        const mainSelector = selector.replace(this.#regex.notSelector, (match, notSelector) => {
             notSelectors.push(notSelector.trim());
             return ''; // Remove :not() from the main selector
         }).trim();
@@ -883,6 +894,12 @@ class Node {
  */
 class SimpleHtmlParser {
 
+    /** @type {Object} Regular expressions used for parsing */
+    #regex = {
+        attributePattern: /(\w+)(?:=(?:"([^"]*)"|'([^']*)'|(\S+)))?/g,
+        validTagName: /[a-zA-Z0-9_\-]/
+    };
+
     /**
      * @type {string[]} Tags that are handled specially (content parsed as text)
      */
@@ -911,7 +928,8 @@ class SimpleHtmlParser {
         let pos = 0;
 
         while (pos < html.length) {
-            if (html.substring(pos, pos + 4) === '<!--') { // Comments
+            // Check for comments first
+            if (html[pos] === '<' && html.substring(pos, pos + 4) === '<!--') {
                 const commentEnd = html.indexOf('-->', pos);
                 if (commentEnd === -1) {
                     pos += 1;
@@ -926,7 +944,28 @@ class SimpleHtmlParser {
 
                 pos = commentEnd + 3;
                 continue;
-            } else if (html[pos] === '<' && html[pos + 1] !== '/') { // Opening tag
+            }
+
+            // Check for non-tags
+            if (html[pos] === '<' && (
+                html[pos + 1] === '<' ||
+                html[pos + 1] === ' ' ||
+                (html[pos + 1] !== '/' && html[pos + 1] !== '!' &&
+                !this.#regex.validTagName.test(html[pos + 1]))
+            )) {
+                const nextTagPos = html.indexOf('<', pos + 1);
+                const textEnd = nextTagPos === -1 ? html.length : nextTagPos;
+
+                const textNode = new Node('text');
+                textNode.content = html.substring(pos, textEnd);
+                currentNode.appendChild(textNode);
+
+                pos = textEnd;
+                continue;
+            }
+
+            // Opening tag
+            if (html[pos] === '<' && html[pos + 1] !== '/') {
                 const tagEnd = html.indexOf('>', pos);
                 if (tagEnd === -1) {
                     pos += 1;
@@ -939,7 +978,7 @@ class SimpleHtmlParser {
 
                 // Parse attributes
                 const attributes = {};
-                const attrPattern = /(\w+)(?:=(?:"([^"]*)"|'([^']*)'|(\S+)))?/g;
+                const attrPattern = this.#regex.attributePattern;
                 let match;
 
                 const attrStr = tagContent.substring(tagName.length);
@@ -1054,7 +1093,11 @@ class SimpleHtmlParser {
 
                 currentNode = node;
                 pos = tagEnd + 1;
-            } else if (html[pos] === '<' && html[pos + 1] === '/') { // Closing tag
+                continue;
+            }
+
+            // Closing tag
+            if (html[pos] === '<' && html[pos + 1] === '/') {
                 const tagEnd = html.indexOf('>', pos);
                 if (tagEnd === -1) {
                     pos += 1;
@@ -1091,20 +1134,21 @@ class SimpleHtmlParser {
                 }
 
                 pos = tagEnd + 1;
-            } else { // Text content
-                const nextTagPos = html.indexOf('<', pos);
-                const textEnd = nextTagPos === -1 ? html.length : nextTagPos;
-
-                if (textEnd > pos) {
-                    const content = html.substring(pos, textEnd);
-                    // Remove the trim() to keep whitespace
-                    const textNode = new Node('text');
-                    textNode.content = content;
-                    currentNode.appendChild(textNode);
-                }
-
-                pos = textEnd;
+                continue;
             }
+
+            // Plain text content
+            const nextTagPos = html.indexOf('<', pos);
+            const textEnd = nextTagPos === -1 ? html.length : nextTagPos;
+
+            if (textEnd > pos) {
+                const content = html.substring(pos, textEnd);
+                const textNode = new Node('text');
+                textNode.content = content;
+                currentNode.appendChild(textNode);
+            }
+
+            pos = textEnd;
         }
 
         return root;

@@ -1,7 +1,7 @@
 /* eslint-disable */
  
 import * as acornLoose from 'acorn-loose';
-import Fs, { realpath } from 'fs';
+import Fs from 'fs';
 import Path from 'path';
 import { SimpleHtmlParser } from './simple-html-parser.js';
 
@@ -38,6 +38,12 @@ class JSHypertextPreprocessor {
 
     /** @type {Object} Built-in functions available in templates with $ prefix */
     #dollar = {
+        conditionalScope() {
+            /**
+             * Placeholder for conditional scope, will be overridden by #processTemplate.
+             * This allows us to conditionally include blocks based on if/else/elseif conditions.
+             */ 
+        },
         context: (key, value) => {
             this.#currentContext.set(key, value);
         },
@@ -72,16 +78,35 @@ class JSHypertextPreprocessor {
                 this.#currentBuffer += constantError;
             }
         },
-        echo: (...args) => {
-            const content = args.join('');
+        echo: (content, conditionalScope) => {
+            /**
+             * If we are inside a conditional tree check to see if this include is within a block
+             * that should be shown. If not, return early and don't process the echo.
+             */
+            if (!conditionalScope.show()) {
+                return;
+            }
+
             if (this.#htmlOutputBuffer.open) {
                 this.#htmlOutputBuffer.value += content;
             } else {
                 this.#currentBuffer += content;
             }
         },
-        include: (file, assignMode = false) => {
-            return this.#include(file, assignMode);
+        else: (conditionalScope) => {
+            conditionalScope.block(true);
+        },
+        elseif: (result, conditionalScope) => {
+            conditionalScope.block(result);
+        },
+        end(conditionalScope) {
+            conditionalScope.block('__END__');
+        },
+        if: (result, conditionalScope) => {
+            conditionalScope.block(result);
+        },
+        include: (file, conditionalScope, assignMode = false) => {
+            return this.#include(file, conditionalScope, assignMode);
         },
         obClose: () => {
             this.#htmlOutputBuffer.open = false;
@@ -111,6 +136,9 @@ class JSHypertextPreprocessor {
     /** @type {Map<string, any>} Initial context values provided at instantiation */
     #initialConstants = new Map();
 
+    /** @type {String[]} Custom JHP tags to recognize */
+    #jhpTags = ['jhp', 's_'];
+
     /** @type {Set<Function>} Stores pre and post processors for template processing */
     #processors = {
         pre: new Set(),
@@ -121,6 +149,8 @@ class JSHypertextPreprocessor {
     #regex = {
         arrowFunction: /([a-zA-Z_$][\w$]*)\s*=\s*\([^)]*\)\s*=>/,
         backtickEscape: /`/g,
+        conditionalNoParams: /(\$\.?(?:else|end))\([^)]*\)/,
+        conditionalWithParams: /(\$\.?(?:if|echo|elseif|include))\(([^)]*)\)/,
         dangerousPatterns: [
             /Function\s*\(/,
             /Object\.defineProperty/,
@@ -168,15 +198,49 @@ class JSHypertextPreprocessor {
 
     /**
      * Creates a new JSHypertextPreprocessor instance.
-     * @param {Map|Object|null} globalConstants Initial variables and functions for template context
+     * @param {Object} options Configuration options for the preprocessor
+     * @param {Map|Object|null} options.globalConstants Initial variables and functions for template context
+     * @param {Function[]} [options.preProcessors] Array of preprocessor functions to add
+     * @param {Function[]} [options.postProcessors] Array of postprocessor functions to add
+     * @param {String[]} [options.jhpTags] Array of custom JHP tags to recognize
      */
-    constructor(globalConstants = null) {
+    constructor(options = {}) {
+        // Define default options
+        const defaultOptions = {
+            globalConstants: null,
+            jhpTags: ['jhp', 'script', 's_'],
+            postProcessors: [],
+            preProcessors: []
+        };
+
+        // Merge defaults with provided options
+        const mergedOptions = { ...defaultOptions, ...options };
+
+        // Extract specific options
+        const {
+            globalConstants,
+            jhpTags,
+            postProcessors,
+            preProcessors
+        } = mergedOptions;
+
         if (globalConstants) {
             if (globalConstants instanceof Map) {
                 this.#initialConstants = globalConstants;
             } else if (typeof globalConstants === 'object') {
                 this.#initialConstants = new Map(Object.entries(globalConstants));
             }
+        }
+
+        // Add provided preProcessors
+        this.addPreProcessor(preProcessors);
+
+        // Add provided postProcessors
+        this.addPostProcessor(postProcessors);
+
+        // Register provided JHP tag(s)
+        if (Array.isArray(jhpTags) && jhpTags.length > 0) {
+            this.#jhpTags = jhpTags;
         }
     }
 
@@ -218,12 +282,40 @@ class JSHypertextPreprocessor {
     }
 
     /**
+     * Finds the index of the closing parenthesis in a string.
+     * @param {string} str String to search
+     * @param {number} startPos Starting position to search from
+     * @returns {number} Index of the closing parenthesis or -1 if not found
+     * @private
+     */ 
+    #findClosingParenIndex(str, startPos) {
+        let depth = 1;
+        for (let i = startPos; i < str.length; i++) {
+            if (str[i] === '(') depth++;
+            else if (str[i] === ')') {
+                depth--;
+                if (depth === 0) return i;
+            }
+        }
+        return -1; // No matching parenthesis found
+    }
+
+    /**
      * Handles file inclusion with path resolution.
      * @param {string} file Path to file to include
+     * @param {Object} conditionalScope Conditional scope object for if/else/elseif blocks
      * @returns {string} Processed file content or error message
      * @private
      */
-    #include = (file, assignMode = false) => {
+    #include = (file, conditionalScope, assignMode = false) => {
+        /**
+         * If we are inside a conditional tree check to see if this include is within a block that
+         * should be shown. If not, return early and don't process the include.
+         */
+        if (!conditionalScope.show()) {
+            return;
+        }
+
         const resolvedPath = this.#resolvePath(file, this.#cwd);
         if (!resolvedPath || resolvedPath === '') {
             const includeError = `<< Error: Unable to resolve include path '${file}' >>`;
@@ -337,7 +429,34 @@ class JSHypertextPreprocessor {
             }
 
             // Skip lines that only call $ functions, we already know no declarations are happening
-            if (line.trim().startsWith('$')) return line;
+            if (line.trim().startsWith('$')) {
+                // Skip lines that don't start with $
+                if (!line.trim().startsWith('$')) return line;
+                
+                // Handle else and end - replace with just the scope parameter
+                if (this.#regex.conditionalNoParams.test(line)) {
+                    return line.replace(this.#regex.conditionalNoParams, "$1($.conditionalScope)");
+                }
+                
+                // Handle if, elseif, echo and include with proper parameter parsing
+                const match = line.match(/(\$\.?(?:if|echo|elseif|include))\(/);
+                if (match) {
+                    const functionStart = match.index;
+                    const paramsStart = functionStart + match[0].length;
+                    const closingParenIndex = this.#findClosingParenIndex(line, paramsStart);
+                    
+                    if (closingParenIndex !== -1) {
+                        const params = line.substring(paramsStart, closingParenIndex);
+                        const functionName = match[1];
+                        return line.substring(0, functionStart) + 
+                            functionName + "(" + params + ", $.conditionalScope)" + 
+                            line.substring(closingParenIndex + 1);
+                    }
+                }
+                
+                // If line was not a conditional or include, return it as is
+                return line;
+            }
 
             // Process variable declarations and reassignments
             let processedLine = line;
@@ -440,9 +559,6 @@ class JSHypertextPreprocessor {
             processors
         } = mergedOptions;
 
-        // Get a new parser instance
-        const parser = new SimpleHtmlParser();
-
         // Reset state for new file processing
         this.#constants.clear();
         this.#currentBuffer = '';
@@ -473,9 +589,13 @@ class JSHypertextPreprocessor {
         }
         this.#cwd = cwd || Path.dirname(file);
 
-        // Process the file and return the result
+        // Process the file into the buffer
         this.#processFile(file);
 
+        // Get a new parser instance
+        const parser = new SimpleHtmlParser(this.#jhpTags);
+
+        // Parse the buffer and post-process the DOM
         const dom = parser.parse(this.#currentBuffer.trim());
         this.#postProcessFile(dom);
         return dom.toHtml();
@@ -488,7 +608,7 @@ class JSHypertextPreprocessor {
      * @private
      */
     #processFile(file) {
-        const parser = new SimpleHtmlParser();
+        const parser = new SimpleHtmlParser(this.#jhpTags);
         const scriptTags = parser.getSpecialTags();
         
         try {
@@ -517,13 +637,51 @@ class JSHypertextPreprocessor {
         const regex = new RegExp(`<(${tagPattern})>([\\s\\S]*?)<\\/\\1>`, 'g');
         let match;
 
+        let addBlockContentToBuffer = true;
+        let blockHasBeenShown = false;
+        let conditionalBlockOpen = false;
+
+        const conditionalScope = {
+            block: (result) => {
+                // If the end block is reached, reset the output flags
+                if (result === '__END__') {
+                    addBlockContentToBuffer = true;
+                    blockHasBeenShown = false;
+                    conditionalBlockOpen = false;
+                    return;
+                }
+    
+                // If a block has already been shown, no others should be shown
+                if (blockHasBeenShown) {
+                    addBlockContentToBuffer = false;
+                    return;
+                }
+    
+                // If no black has been shown, only show if the result is true
+                if (!result) {
+                    addBlockContentToBuffer = false;
+                    return;
+                }
+    
+                // This block passed, so show it change the output flags
+                addBlockContentToBuffer = true;
+                blockHasBeenShown = true;
+                conditionalBlockOpen = true;
+            },
+            show: () => {
+                return addBlockContentToBuffer;
+            }
+        };
+
         while ((match = regex.exec(template)) !== null) {
-            // Add HTML content before script block to output
-            const htmlContent = template.slice(lastIndex, match.index);
-            if (this.#htmlOutputBuffer.open) {
-                this.#htmlOutputBuffer.value += htmlContent;
-            } else {
-                this.#currentBuffer += htmlContent;
+            // Add HTML content before script block to output; contingent on conditional state
+            if (addBlockContentToBuffer) {
+                const htmlContent = template.slice(lastIndex, match.index);
+                if (this.#htmlOutputBuffer.open) {
+                    this.#htmlOutputBuffer.value += htmlContent;
+                } else {
+                    this.#currentBuffer += htmlContent;
+                }
             }
 
             // Process script block
@@ -531,13 +689,17 @@ class JSHypertextPreprocessor {
             try {
                 code = this.#preprocessScriptBlock(code);
                 const wrapper = new Function('$', `${code}`);
-                wrapper(this.#dollar);
+                wrapper({ ...this.#dollar, conditionalScope });
             } catch (err) {
                 console.error(err);
                 this.#currentBuffer += `<< Error: ${err.message}. >>`;
             }
 
             lastIndex = regex.lastIndex;
+        }
+        
+        if (conditionalBlockOpen) {
+            this.#currentBuffer += '<< Error: Unclosed conditional block detected. >>';
         }
 
         // Add remaining HTML content after last script block
@@ -670,7 +832,6 @@ class JSHypertextPreprocessor {
 
         switch (typeof value) {
             case 'string':
-                 
                 return `\`${value.replace(this.#regex.backtickEscape, '\\`').replace(this.#regex.templateLiteralEscape, '\\${')}\``;
             case 'number':
             case 'boolean':
@@ -721,12 +882,14 @@ class JSHypertextPreprocessor {
      * @returns {string[]} Array of undefined variable names
      */
     #walkAndReplaceScriptParts(code) {
-        // Skip processing if this is not a script block
+        /** Skip processing if this is not a script block
+         * @deprecated
         if (!code.includes('<script>') &&
             !code.includes('</script>') &&
             (code.includes('<') || code.includes('>'))) {
             return code;
         }
+         */
 
         try {
             // Track declared and used variables

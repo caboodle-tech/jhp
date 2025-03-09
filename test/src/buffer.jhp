@@ -8,7 +8,7 @@
     $obOpen();
 </script>
 
-<h1>About</h1>
+<h1>Output Buffering</h1>
 
 <p>
     This page demonstrates the use of <code>$obOpen</code>, <code>$obClose</code>, and <code>$echo</code> functions for content capturing and rendering. The <code>$obOpen</code> function initiates content capture at the start of the page, while <code>$obClose</code> stops the capture at the end. The <code>$echo</code> function then outputs the captured content, allowing for flexible content management and rendering.
@@ -24,7 +24,7 @@
      * content of the page and then the content is displayed between the header and footer.
      */
     $content = $obClose();
-    let title = 'About';
+    let title = 'Output Buffering';
     $include('./partials/header.html');
     $echo(`\n${$content}\n`);
     $include('./partials/footer.html');

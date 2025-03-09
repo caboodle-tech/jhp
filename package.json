@@ -1,7 +1,15 @@
 {
+    "author": "Christopher Keers <source[at]caboodle.tech>",
+    "bugs": {
+        "url": "https://github.com/caboodle-tech/jhp/issues"
+    },
+    "contributors": [
+        "Caboodle Tech Inc (https://github.com/caboodle-tech)"
+    ],
     "dependencies": {
         "acorn-loose": "^8.4.0"
     },
+    "description": "JS Hypertext Preprocessor (JHP) is a JavaScript templating engine for dynamic static site generation, using native JavaScript and HTML, inspired by PHP.",
     "devDependencies": {
         "@html-eslint/eslint-plugin": "^0.32.0",
         "@html-eslint/parser": "^0.32.0",
@@ -9,9 +17,29 @@
         "eslint-plugin-jsonc": "^2.18.2",
         "jsonc-eslint-parser": "^2.4.0"
     },
+    "homepage": "https://github.com/caboodle-tech/jhp#readme",
+    "keywords": [
+        "JS Hypertext Preprocessor",
+        "JavaScript",
+        "compiler",
+        "engine",
+        "jhp",
+        "native",
+        "parser",
+        "processor",
+        "view engine"
+    ],
+    "license": "Common Clause with MIT",
+    "main": "src/jhp.js",
+    "name": "@caboodle-tech/jhp",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/caboodle-tech/jhp.git"
+    },
     "scripts": {
         "test": "node ./test/index.js"
     },
     "type": "module",
-    "version": "2.0.0"
+    "version": "2.1.0"
 }
+  

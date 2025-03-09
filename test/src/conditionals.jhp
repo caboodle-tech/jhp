@@ -1,9 +1,9 @@
 <script>
-    let title = 'Contact';
+    let title = 'Conditional Statements';
     $include('./partials/header.html');
 </script>
 
-<h1>Contact</h1>
+<h1>Conditional Statements</h1>
 
 <p>
     This page demonstrates the use of conditional statements: <code>$if</code>, <code>$elseif</code>, <code>$else</code>, and <code>$end</code>. It will display a message below based on the remainder of today's date when divided by 3. The output will differ depending on when this template was originally compiled.

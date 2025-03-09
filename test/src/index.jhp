@@ -6,7 +6,7 @@
 <h1>Welcome!</h1>
 
 <p>
-    This is a standard JHP file that has been compiled to HTML. It does not use any advanced features of JHP, only <code>$include</code> to include the header and footer.
+    This is a standard JHP file that has been compiled to HTML. It uses basic features of JHP, such as <code>$include</code> to incorporate the header and footer. Additionally, <code>$echo</code> is utilized to display the JHP version number in the footer.
 </p>
 
 <p>

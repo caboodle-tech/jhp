@@ -5,7 +5,7 @@ import Fs from 'fs';
 import Path from 'path';
 import { SimpleHtmlParser } from './simple-html-parser.js';
 
-const VERSION = '2.0.0';
+const VERSION = '2.1.0';
 
 /**
  * JavaScript Hypertext Preprocessor (JHP) is a preprocessor that handles HTML files with embedded
@@ -83,7 +83,7 @@ class JSHypertextPreprocessor {
              * If we are inside a conditional tree check to see if this include is within a block
              * that should be shown. If not, return early and don't process the echo.
              */
-            if (!conditionalScope.show()) {
+            if (conditionalScope !== undefined && !conditionalScope.show()) {
                 return;
             }
 
@@ -176,7 +176,14 @@ class JSHypertextPreprocessor {
             /sudo\s+.+/i
         ],
         declaration: /\b(?:const|let|var)\s+(.+?);/g,
+        fileExtension: /\.\w+$/,
         functionDeclaration: /function\s+([a-zA-Z_$][\w$]*)/,
+        osPaths: {
+            relative: /^\.{1,2}[\/\\]/,
+            unc: /^\\\\/,
+            unix: /^\//,
+            windows: /^[a-zA-Z]:[\/\\]/
+        },
         preprocess: /\$(\w+)/g,
         reassignment: /\b([a-zA-Z_$][\w$]*)\s*=\s*([^;]+);/g,
         regexSpecialCharactersEscape: /[.*+?^${}()|[\]\\]/g,
@@ -188,7 +195,7 @@ class JSHypertextPreprocessor {
     #relPath = null;
 
     /** @type {string} Root directory for file resolution */
-    #rootDir = '';
+    #rootDir = null;
 
     /** @type {Set<Function>} Stores temporary pre and post processors for template processing */
     #tmpProcessors = {
@@ -203,6 +210,7 @@ class JSHypertextPreprocessor {
      * @param {Function[]} [options.preProcessors] Array of preprocessor functions to add
      * @param {Function[]} [options.postProcessors] Array of postprocessor functions to add
      * @param {String[]} [options.jhpTags] Array of custom JHP tags to recognize
+     * @param {String} [options.rootDir] Root directory for file resolution
      */
     constructor(options = {}) {
         // Define default options
@@ -210,7 +218,8 @@ class JSHypertextPreprocessor {
             globalConstants: null,
             jhpTags: ['jhp', 'script', 's_'],
             postProcessors: [],
-            preProcessors: []
+            preProcessors: [],
+            rootDir: null
         };
 
         // Merge defaults with provided options
@@ -221,7 +230,8 @@ class JSHypertextPreprocessor {
             globalConstants,
             jhpTags,
             postProcessors,
-            preProcessors
+            preProcessors,
+            rootDir
         } = mergedOptions;
 
         if (globalConstants) {
@@ -241,6 +251,11 @@ class JSHypertextPreprocessor {
         // Register provided JHP tag(s)
         if (Array.isArray(jhpTags) && jhpTags.length > 0) {
             this.#jhpTags = jhpTags;
+        }
+
+        // Set the root directory for file resolution only if it was explicitly provided
+        if (rootDir) {
+            this.#rootDir = rootDir;
         }
     }
 
@@ -312,7 +327,7 @@ class JSHypertextPreprocessor {
          * If we are inside a conditional tree check to see if this include is within a block that
          * should be shown. If not, return early and don't process the include.
          */
-        if (!conditionalScope.show()) {
+        if (conditionalScope !== undefined && !conditionalScope.show()) {
             return;
         }
 
@@ -355,6 +370,43 @@ class JSHypertextPreprocessor {
         return !this.#regex.dangerousPatterns.some((pattern) => {
             return pattern.test(code);
         });
+    }
+
+    /**
+     * Ultra-fast detector to determine if a string is code or a file path
+     * @param {string} fileOrCode - The string to analyze
+     * @return {boolean} - Returns true if input is code, false if it's likely a path
+     */
+    isCodeNotPath(fileOrCode) {
+        // Empty check
+        if (!fileOrCode) {
+            return true;
+        }
+
+        // Guaranteed code indicators
+        if (fileOrCode.includes('{') || 
+            fileOrCode.includes('}') || 
+            fileOrCode.includes('<') || 
+            fileOrCode.includes('>') || 
+            fileOrCode.includes(';')) {
+            return true;
+        }
+
+        // If the string has path separators and ends with a file extension it's likely a path
+        if (this.#regex.fileExtension.test(fileOrCode) && (fileOrCode.includes('/') || fileOrCode.includes('\\'))) {
+            return false;
+        }
+
+        // Common path starting patterns indicate a path
+        if (this.#regex.osPaths.windows.test(fileOrCode)  || // Windows drive
+            this.#regex.osPaths.unix.test(fileOrCode)     || // Unix root
+            this.#regex.osPaths.relative.test(fileOrCode) || // Relative
+            this.#regex.osPaths.unc.test(fileOrCode)) {      // UNC
+            return false;
+        }
+
+        // Default to code for anything unclear
+        return true;
     }
 
     /**
@@ -532,21 +584,25 @@ class JSHypertextPreprocessor {
     }
 
     /**
-     * Initiates processing of a file with the given relative path and working directory.
-     * @param {string} file Path to the file to process
-     * @param {string|null} relPath Relative path for URL resolution; devs should predetermine this on the initial call
-     * @param {string} cwd Current working directory for file resolution
+     * Initiates processing of a code string or file with the given options.
+     * @param {string} fileOrCode Code to process or the path to the file to process
+     * @param {Object} [options] Configuration options for processing
+     * @param {string|null} [options.relPath] Relative path for URL resolution; devs should predetermine this on the initial call
+     * @param {string} [options.cwd] Current working directory for file resolution; devs should predetermine this on the initial call
+     * @param {Object} [options.processors] Pre and post processors for template processing
+     * @param {Function[]} [options.processors.pre] Array of preprocessor functions to add
+     * @param {Function[]} [options.processors.post] Array of postprocessor functions to add
      * @returns {string} Processed template content
      */
-    process(file, options = {}) {
+    process(fileOrCode, options = {}) {
         // Define default options
         const defaultOptions = {
             cwd: null,
-            relPath: null,
             processors: {
                 pre: [],
                 post: []
-            }
+            },
+            relPath: null
         };
 
         // Merge defaults with provided options
@@ -555,8 +611,8 @@ class JSHypertextPreprocessor {
         // Extract specific options
         const {
             cwd,
+            processors,
             relPath,
-            processors
         } = mergedOptions;
 
         // Reset state for new file processing
@@ -583,14 +639,22 @@ class JSHypertextPreprocessor {
             this.#constants.set(key, value);
         }
 
-        // Determine root directory if not already set
-        if (!this.#rootDir) {
-            this.#rootDir = cwd || Path.dirname(file);
+        // Determine root directory if its not already set
+        const inputIsCodeNotAPath = this.isCodeNotPath(fileOrCode);
+        if(inputIsCodeNotAPath) {
+            if (!this.#rootDir) {
+                this.#rootDir = cwd || process.cwd();
+            }
+            this.#cwd = cwd || process.cwd();
+        } else {
+            if (!this.#rootDir) {
+                this.#rootDir = cwd || Path.dirname(fileOrCode);
+            }
+            this.#cwd = cwd || Path.dirname(fileOrCode);
         }
-        this.#cwd = cwd || Path.dirname(file);
 
-        // Process the file into the buffer
-        this.#processFile(file);
+        // Process the code or file into the buffer
+        this.#processFile(fileOrCode, inputIsCodeNotAPath);
 
         // Get a new parser instance
         const parser = new SimpleHtmlParser(this.#jhpTags);
@@ -603,21 +667,28 @@ class JSHypertextPreprocessor {
 
     /**
      * Processes a single file by parsing it into a DOM and processing the template.
-     * @param {string} file Path to the file to process
+     * @param {string} fileOrCode Path to the file to process
      * @returns {string|undefined} Processed content or error message
      * @private
      */
-    #processFile(file) {
+    #processFile(fileOrCode, isCodeNotPath = undefined) {
+        if (isCodeNotPath === undefined) {
+            isCodeNotPath = this.isCodeNotPath(fileOrCode);
+        }
+
         const parser = new SimpleHtmlParser(this.#jhpTags);
         const scriptTags = parser.getSpecialTags();
         
         try {
-            const templateText = Fs.readFileSync(file, 'utf8') || '';
+            let templateText = fileOrCode;
+            if (!isCodeNotPath) {
+                templateText = Fs.readFileSync(fileOrCode, 'utf8') || '';
+            }
             const dom = parser.parse(templateText);
             this.#preprocessFile(dom);
             this.#processTemplate(dom.toHtml(), scriptTags);
         } catch (err) {
-            return `<< Error: Unable to read file ${file}: ${err.message} >>`;
+            return `<< Error: Unable to read file ${fileOrCode}: ${err.message} >>`;
         }
     }
 
@@ -805,6 +876,8 @@ class JSHypertextPreprocessor {
             return Fs.existsSync(file) ? file : null;
         }
 
+        console.log(this.#rootDir, file);
+
         // Try resolving relative to current directory
         let resolvedPath = Path.resolve(currentDir, file);
         if (Fs.existsSync(resolvedPath)) {
@@ -812,9 +885,11 @@ class JSHypertextPreprocessor {
         }
 
         // Fall back to root directory
-        resolvedPath = Path.resolve(this.#rootDir, file);
-        if (Fs.existsSync(resolvedPath)) {
-            return resolvedPath;
+        if (this.#rootDir !== currentDir) {
+            resolvedPath = Path.resolve(this.#rootDir, file);
+            if (Fs.existsSync(resolvedPath)) {
+                return resolvedPath;
+            }
         }
 
         return null;

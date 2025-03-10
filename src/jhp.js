@@ -876,8 +876,6 @@ class JSHypertextPreprocessor {
             return Fs.existsSync(file) ? file : null;
         }
 
-        console.log(this.#rootDir, file);
-
         // Try resolving relative to current directory
         let resolvedPath = Path.resolve(currentDir, file);
         if (Fs.existsSync(resolvedPath)) {

@@ -5,7 +5,7 @@ import Fs from 'fs';
 import Path from 'path';
 import { SimpleHtmlParser } from './simple-html-parser.js';
 
-const VERSION = '2.1.0';
+const VERSION = '2.2.0';
 
 /**
  * JavaScript Hypertext Preprocessor (JHP) is a preprocessor that handles HTML files with embedded
@@ -16,6 +16,9 @@ const VERSION = '2.1.0';
  */
 class JSHypertextPreprocessor {
 
+    /** @type {String[]} Reserved function names that cannot be overridden */
+    #builtInDollarFunctions = ['context', 'define', 'echo', 'else', 'elseif', 'end', 'if', 'include', 'obClose', 'obOpen', 'obStatus', 'version'];
+
     /** @type {Set<string>} Built-in JavaScript globals that shouldn't be treated as undefined */
     #builtInGlobals = new Set([
         'Array', 'Boolean', 'console', 'Date', 'Error', 'Function', 'Infinity',
@@ -24,11 +27,14 @@ class JSHypertextPreprocessor {
         'parseInt', 'parseFloat', 'isNaN', 'isFinite', 'Intl', 'eval', 'globalThis'
     ]);
 
+    /** @type {RegExp[]} Compiled dangerous patterns for faster processing */
+    #compiledDangerousPatterns = [];
+
     /** @type {Map<string, any>} Stores constant values that cannot be redefined */
     #constants = new Map();
 
-    /** @type {string} Accumulates processed template content */
-    #currentBuffer = '';
+    /** @type {Array<string>} Accumulates processed template content */
+    #currentBuffer = [];
 
     /** @type {Map<string, any>} Current variable context for template processing */
     #currentContext = new Map();
@@ -38,7 +44,7 @@ class JSHypertextPreprocessor {
 
     /** @type {Object} Built-in functions available in templates with $ prefix */
     #dollar = {
-        conditionalScope() {
+        conditionalScope: () => {
             /**
              * Placeholder for conditional scope, will be overridden by #processTemplate.
              * This allows us to conditionally include blocks based on if/else/elseif conditions.
@@ -52,9 +58,9 @@ class JSHypertextPreprocessor {
             if (this.#currentContext.has(key)) {
                 const constantError = `<< Error: Variable '${key}' already declared, unable to declare as constant. >>`;
                 if (this.#htmlOutputBuffer.open) {
-                    this.#htmlOutputBuffer.value += constantError;
+                    this.#htmlOutputBuffer.value.push(constantError);
                 } else {
-                    this.#currentBuffer += constantError;
+                    this.#currentBuffer.push(constantError);
                 }
                 return;
             }
@@ -73,9 +79,9 @@ class JSHypertextPreprocessor {
             // If the value is different, log an error into the current buffer
             const constantError = `<< Error: Attempted to redeclare defined constant '${key}'. >>`;
             if (this.#htmlOutputBuffer.open) {
-                this.#htmlOutputBuffer.value += constantError;
+                this.#htmlOutputBuffer.value.push(constantError);
             } else {
-                this.#currentBuffer += constantError;
+                this.#currentBuffer.push(constantError);
             }
         },
         echo: (content, conditionalScope) => {
@@ -88,9 +94,9 @@ class JSHypertextPreprocessor {
             }
 
             if (this.#htmlOutputBuffer.open) {
-                this.#htmlOutputBuffer.value += content;
+                this.#htmlOutputBuffer.value.push(content);
             } else {
-                this.#currentBuffer += content;
+                this.#currentBuffer.push(content)
             }
         },
         else: (conditionalScope) => {
@@ -110,10 +116,10 @@ class JSHypertextPreprocessor {
         },
         obClose: () => {
             this.#htmlOutputBuffer.open = false;
-            return this.#htmlOutputBuffer.value.trim();
+            return this.#htmlOutputBuffer.value.join().trim();
         },
         obOpen: () => {
-            this.#htmlOutputBuffer.value = '';
+            this.#htmlOutputBuffer.value = [];
             this.#htmlOutputBuffer.open = true;
         },
         obStatus: () => {
@@ -127,7 +133,7 @@ class JSHypertextPreprocessor {
     /** @type {Object} Manages buffered HTML output for template sections */
     #htmlOutputBuffer = {
         open: false,
-        value: ''
+        value: []
     };
 
     /** @type {Map<string, string>} Cache for included files */
@@ -257,6 +263,10 @@ class JSHypertextPreprocessor {
         if (rootDir) {
             this.#rootDir = rootDir;
         }
+
+        // Precompile dangerous patterns for faster processing
+        this.#compiledDangerousPatterns = this.#regex.dangerousPatterns.map(pattern => 
+            typeof pattern === 'string' ? new RegExp(pattern) : pattern);
     }
 
     /**
@@ -344,7 +354,7 @@ class JSHypertextPreprocessor {
         if (assignMode) {
             // Save state
             const prevBuffer = this.#currentBuffer;
-            this.#currentBuffer = '';
+            this.#currentBuffer = [];
 
             // Process in isolation
             this.#processFile(resolvedPath);
@@ -353,7 +363,7 @@ class JSHypertextPreprocessor {
             const result = this.#currentBuffer;
             this.#currentBuffer = prevBuffer;
             this.#cwd = previousCwd;
-            return result;
+            return result.join('');
         }
 
         // Normal include, output directly
@@ -367,9 +377,7 @@ class JSHypertextPreprocessor {
      * @returns {boolean} True if code appears safe
      */
     isCodeGenerallySafe(code) {
-        return !this.#regex.dangerousPatterns.some((pattern) => {
-            return pattern.test(code);
-        });
+        return !this.#compiledDangerousPatterns.some(pattern => pattern.test(code));
     }
 
     /**
@@ -617,10 +625,10 @@ class JSHypertextPreprocessor {
 
         // Reset state for new file processing
         this.#constants.clear();
-        this.#currentBuffer = '';
+        this.#currentBuffer = [];
         this.#currentContext.clear();
         this.#htmlOutputBuffer.open = false;
-        this.#htmlOutputBuffer.value = '';
+        this.#htmlOutputBuffer.value = [];
         this.#includes.clear();
         this.#relPath = relPath;
         this.#tmpProcessors.post.clear();
@@ -660,7 +668,7 @@ class JSHypertextPreprocessor {
         const parser = new SimpleHtmlParser(this.#jhpTags);
 
         // Parse the buffer and post-process the DOM
-        const dom = parser.parse(this.#currentBuffer.trim());
+        const dom = parser.parse(this.#currentBuffer.join('').trim());
         this.#postProcessFile(dom);
         return dom.toHtml();
     }
@@ -749,9 +757,9 @@ class JSHypertextPreprocessor {
             if (addBlockContentToBuffer) {
                 const htmlContent = template.slice(lastIndex, match.index);
                 if (this.#htmlOutputBuffer.open) {
-                    this.#htmlOutputBuffer.value += htmlContent;
+                    this.#htmlOutputBuffer.value.push(htmlContent);
                 } else {
-                    this.#currentBuffer += htmlContent;
+                    this.#currentBuffer.push(htmlContent);
                 }
             }
 
@@ -763,22 +771,22 @@ class JSHypertextPreprocessor {
                 wrapper({ ...this.#dollar, conditionalScope });
             } catch (err) {
                 console.error(err);
-                this.#currentBuffer += `<< Error: ${err.message}. >>`;
+                this.#currentBuffer.push(`<< Error: ${err.message}. >>`);
             }
 
             lastIndex = regex.lastIndex;
         }
         
         if (conditionalBlockOpen) {
-            this.#currentBuffer += '<< Error: Unclosed conditional block detected. >>';
+            this.#currentBuffer.push('<< Error: Unclosed conditional block detected. >>')
         }
 
         // Add remaining HTML content after last script block
         const remainingHtml = template.slice(lastIndex);
         if (this.#htmlOutputBuffer.open) {
-            this.#htmlOutputBuffer.value += remainingHtml;
+            this.#htmlOutputBuffer.value.push(remainingHtml);
         } else {
-            this.#currentBuffer += remainingHtml;
+            this.#currentBuffer.push(remainingHtml);
         }
 
         /*
@@ -849,6 +857,22 @@ class JSHypertextPreprocessor {
                 relPath: this.#relPath
             });
         }
+    }
+
+    /**
+     * Registers a new function to be available in templates with a $ prefix.
+     * @param {string} name Name of the function
+     * @param {*} value The value to assign to this property; commonly a function or object
+     * @throws {Error} If the function name is reserved and cannot be overridden
+     */
+    registerDollarProperty(name, value) {
+        // Block attempts to overwrite built-in functions
+        if (this.#builtInDollarFunctions.includes(name)) {
+            throw new Error(`<< Error: Function name '${name}' is reserved and cannot be overridden. >>`);
+        };
+
+        // If thisContext is provided, bind the function to it
+        this.#dollar[name] = value;
     }
 
     /**

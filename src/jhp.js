@@ -5,7 +5,7 @@ import Fs from 'fs';
 import Path from 'path';
 import { SimpleHtmlParser } from './simple-html-parser.js';
 
-const VERSION = '2.2.0';
+const VERSION = '2.3.0';
 
 /**
  * JavaScript Hypertext Preprocessor (JHP) is a preprocessor that handles HTML files with embedded
@@ -448,51 +448,43 @@ class JSHypertextPreprocessor {
     #preprocessScriptBlock(code) {
         const currentDeclarations = new Set();
         const injections = [];
-        let modifiedCode = '';
-
-        // Track function processing state
         let currentlyProcessingFunction = null;
         let currentBraceDepth = 0;
-
-        // First process the current code to find declarations
+        const contextVarSet = new Set(this.#currentContext.keys());
+        
+        // Process the code line by line
         const lines = code.split('\n').map((line) => {
-            // Check for function declarations first
+            // Function declarations handling
             const arrowMatch = line.match(this.#regex.arrowFunction);
             const funcMatch = line.match(this.#regex.functionDeclaration);
-
+    
             if (arrowMatch || funcMatch) {
                 const funcName = arrowMatch ? arrowMatch[1] : funcMatch[1];
                 if (!line.includes('{')) {
-                    // Single line arrow function
-                    return `${line}
-                            $.context('${funcName}', ${funcName});`;
+                    return `${line}\n$.context('${funcName}', ${funcName});`;
                 }
-                // Start of multiline function, track it but don't add context yet
                 currentlyProcessingFunction = funcName;
                 currentBraceDepth = 1;
                 return line;
             }
-
-            // If we're tracking a function body, count braces
+    
             if (currentlyProcessingFunction) {
                 currentBraceDepth += (line.match(/{/g) || []).length;
                 currentBraceDepth -= (line.match(/}/g) || []).length;
-
+    
                 if (currentBraceDepth === 0) {
-                    // End of function - add context call
                     const funcName = currentlyProcessingFunction;
                     currentlyProcessingFunction = null;
-                    return `${line}
-                            $.context('${funcName}', ${funcName});`;
+                    return `${line}\n$.context('${funcName}', ${funcName});`;
                 }
                 return line;
             }
-
-            // Skip lines that only call $ functions, we already know no declarations are happening
+    
+            // Handle conditional scope injections
+            let processedLine = line;
+            
+            // Handle $ function calls with conditionalScope
             if (line.trim().startsWith('$')) {
-                // Skip lines that don't start with $
-                if (!line.trim().startsWith('$')) return line;
-                
                 // Handle else and end - replace with just the scope parameter
                 if (this.#regex.conditionalNoParams.test(line)) {
                     return line.replace(this.#regex.conditionalNoParams, "$1($.conditionalScope)");
@@ -514,48 +506,42 @@ class JSHypertextPreprocessor {
                     }
                 }
                 
-                // If line was not a conditional or include, return it as is
                 return line;
             }
-
-            // Process variable declarations and reassignments
-            let processedLine = line;
+    
+            // Process variable declarations
             processedLine = line.replace(this.#regex.declaration, (match, declarationList) => {
                 let result = match;
                 let varMatch;
-
+    
                 this.#regex.variables.lastIndex = 0;
                 while ((varMatch = this.#regex.variables.exec(declarationList)) !== null) {
                     const varName = varMatch[1].trim();
-
-                    // Check if attempting to declare a constant
+    
                     if (this.#constants.has(varName)) {
                         const constValue = this.#constants.get(varName);
                         const valueStr = this.#serializeValue(constValue);
                         result = `$.echo(\`<< Error: Attempt to redeclare defined constant '${varName}'. >>\`);
-                                    ${varName} = ${valueStr};`;
+                                  ${varName} = ${valueStr};`;
                     } else if (!match.startsWith('var')) {
-                        // Only track non-var declarations
                         currentDeclarations.add(varName);
                         result += `\n$.context('${varName}', ${varName});`;
                     }
                 }
-
+    
                 return result;
             });
-
-            // Add $context calls after every declaration or reassignment
+    
+            // Handle reassignments
             if (!processedLine.includes('$')) {
                 processedLine = processedLine.replace(this.#regex.reassignment, (match, varName) => {
-                    // Check if attempting to reassign a constant and if so add the original value instead
                     if (this.#constants.has(varName)) {
                         const constValue = this.#constants.get(varName);
                         const valueStr = this.#serializeValue(constValue);
                         return `$.echo(\`<< Error: Attempt to redeclare defined constant '${varName}'. >>\`);
                                 \n${varName} = ${valueStr};`;
                     }
-
-                    // Add the actual $context call
+    
                     if (!match.includes('const ') && !match.includes('let ') && !match.includes('var ')) {
                         currentDeclarations.add(varName);
                         return `${match}\n$.context('${varName}', ${varName});`;
@@ -563,32 +549,35 @@ class JSHypertextPreprocessor {
                     return match;
                 });
             }
-
+    
             return processedLine;
         });
-
-        // Reassemble the modified code (script block)
-        modifiedCode = lines.join('\n');
-
-        // Add constants to the inject array first!
+    
+        // Add constants to injections
         for (const [key, value] of this.#constants.entries()) {
             const valueStr = this.#serializeValue(value);
             injections.push(`const ${key} = ${valueStr};`);
         }
-
-        // Now add all non-redeclared variables to the inject array
+    
+        // Add context variables to injections
         for (const [key, value] of this.#currentContext.entries()) {
-            if (!currentDeclarations.has(key)) {
-                const valueStr = this.#serializeValue(value);
-                injections.push(`var ${key} = ${valueStr};`);
-            }
+            const valueStr = this.#serializeValue(value);
+            injections.push(`var ${key} = ${valueStr};`);
         }
-
-        // Inject the declarations and reassignments before the code first!
-        modifiedCode = `${injections.join('\n')}\n${modifiedCode}`;
-
-        // Now walk the script block and make final replacements
-        return this.#walkAndReplaceScriptParts(modifiedCode);
+    
+        // Join code and apply single-pass transformation
+        let modifiedCode = lines.join('\n');
+    
+        // Apply single-pass transformation for redeclarations
+        if (contextVarSet.size > 0) {
+            const varNames = Array.from(contextVarSet).map(name => this.escapeRegExp(name)).join('|');
+            const declPattern = new RegExp(`\\b(const|let)\\s+(${varNames})\\b`, 'g');
+            modifiedCode = modifiedCode.replace(declPattern, (match, declType, varName) => varName);
+        }
+    
+        // Final transformations
+        modifiedCode = this.#walkAndReplaceScriptParts(`${injections.join('\n')}\n${modifiedCode}`);
+        return modifiedCode;
     }
 
     /**

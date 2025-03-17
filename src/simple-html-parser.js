@@ -896,7 +896,7 @@ class SimpleHtmlParser {
 
     /** @type {Object} Regular expressions used for parsing */
     #regex = {
-        attributePattern: /(\w+)(?:=(?:"([^"]*)"|'([^']*)'|(\S+)))?/g,
+        attributePattern: /([\w-]+)(?:=(?:"([^"]*)"|'([^']*)'|(\S+)))?/g,
         validTagName: /[a-zA-Z0-9_\-]/
     };
 

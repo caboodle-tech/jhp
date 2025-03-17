@@ -5,7 +5,7 @@ import Fs from 'fs';
 import Path from 'path';
 import { SimpleHtmlParser } from './simple-html-parser.js';
 
-const VERSION = '2.3.0';
+const VERSION = '2.3.1';
 
 /**
  * JavaScript Hypertext Preprocessor (JHP) is a preprocessor that handles HTML files with embedded

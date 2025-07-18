@@ -1,11 +1,10 @@
-/* eslint-disable */
- 
+/* eslint-disable max-len */
 import * as acornLoose from 'acorn-loose';
 import Fs from 'fs';
 import Path from 'path';
 import { SimpleHtmlParser } from './simple-html-parser.js';
 
-const VERSION = '2.3.2';
+const VERSION = '2.4.0';
 
 /**
  * JavaScript Hypertext Preprocessor (JHP) is a preprocessor that handles HTML files with embedded
@@ -48,7 +47,7 @@ class JSHypertextPreprocessor {
             /**
              * Placeholder for conditional scope, will be overridden by #processTemplate.
              * This allows us to conditionally include blocks based on if/else/elseif conditions.
-             */ 
+             */
         },
         context: (key, value) => {
             this.#currentContext.set(key, value);
@@ -96,7 +95,7 @@ class JSHypertextPreprocessor {
             if (this.#htmlOutputBuffer.open) {
                 this.#htmlOutputBuffer.value.push(content);
             } else {
-                this.#currentBuffer.push(content)
+                this.#currentBuffer.push(content);
             }
         },
         else: (conditionalScope) => {
@@ -193,8 +192,7 @@ class JSHypertextPreprocessor {
         preprocess: /\$(\w+)/g,
         reassignment: /\b([a-zA-Z_$][\w$]*)\s*=\s*([^;]+);/g,
         regexSpecialCharactersEscape: /[.*+?^${}()|[\]\\]/g,
-        templateLiteralEscape: /\$\{/g,
-        variables: /([a-zA-Z_$][\w$]*)\s*(?:=\s*([^,;]+))?/g
+        templateLiteralEscape: /\$\{/g
     };
 
     /** @type {string|null} Relative path for URL resolution */
@@ -263,7 +261,9 @@ class JSHypertextPreprocessor {
         }
 
         // Precompile dangerous patterns for faster processing
-        this.#compiledDangerousPatterns = this.#regex.dangerousPatterns.map(pattern => 
+        // eslint-disable-next-line no-confusing-arrow
+        this.#compiledDangerousPatterns = this.#regex.dangerousPatterns.map((pattern) =>
+            // eslint-disable-next-line arrow-body-style
             typeof pattern === 'string' ? new RegExp(pattern) : pattern);
     }
 
@@ -310,14 +310,17 @@ class JSHypertextPreprocessor {
      * @param {number} startPos Starting position to search from
      * @returns {number} Index of the closing parenthesis or -1 if not found
      * @private
-     */ 
+     */
     #findClosingParenIndex(str, startPos) {
         let depth = 1;
-        for (let i = startPos; i < str.length; i++) {
-            if (str[i] === '(') depth++;
-            else if (str[i] === ')') {
-                depth--;
-                if (depth === 0) return i;
+        for (let i = startPos; i < str.length; i += 1) {
+            if (str[i] === '(') {
+                depth += 1;
+            } else if (str[i] === ')') {
+                depth -= 1;
+                if (depth === 0) {
+                    return i;
+                }
             }
         }
         return -1; // No matching parenthesis found
@@ -375,7 +378,7 @@ class JSHypertextPreprocessor {
      * @returns {boolean} True if code appears safe
      */
     isCodeGenerallySafe(code) {
-        return !this.#compiledDangerousPatterns.some(pattern => pattern.test(code));
+        return !this.#compiledDangerousPatterns.some((pattern) => { return pattern.test(code); });
     }
 
     /**
@@ -390,10 +393,10 @@ class JSHypertextPreprocessor {
         }
 
         // Guaranteed code indicators
-        if (fileOrCode.includes('{') || 
-            fileOrCode.includes('}') || 
-            fileOrCode.includes('<') || 
-            fileOrCode.includes('>') || 
+        if (fileOrCode.includes('{') ||
+            fileOrCode.includes('}') ||
+            fileOrCode.includes('<') ||
+            fileOrCode.includes('>') ||
             fileOrCode.includes(';')) {
             return true;
         }
@@ -413,6 +416,53 @@ class JSHypertextPreprocessor {
 
         // Default to code for anything unclear
         return true;
+    }
+
+    /**
+     * Parses variable declarations from a declaration statement using AST parsing
+     * to properly handle string literals and avoid false positive variable names.
+     * This replaces the problematic regex-based approach that incorrectly identified
+     * words inside string values as variable names.
+     *
+     * @param {string} declarationStatement - The variable declaration statement (e.g., "a = 'hello', b = 42")
+     * @returns {Array<{name: string, value: string|null}>} Array of variable objects with name and value properties
+     * @private
+     */
+    #parseVariableDeclarations(declarationStatement) {
+        const variables = [];
+
+        try {
+            // Create a complete declaration statement for parsing
+            // We need to add a declaration keyword since the input is just the assignment part
+            const fullStatement = `var ${declarationStatement}`;
+
+            // Parse the statement using acornLoose for fault tolerance
+            const ast = acornLoose.parse(fullStatement, {
+                ecmaVersion: 2020,
+                sourceType: 'script',
+                allowReturnOutsideFunction: true,
+                allowImportExportEverywhere: true
+            });
+
+            // Walk the AST to find variable declarations
+            this.#walkVariableDeclarations(ast, variables);
+
+        } catch (err) {
+            // If AST parsing fails, fall back to a safer approach
+            // This handles cases where the declaration might be malformed
+            console.warn(`Failed to parse variable declaration: ${declarationStatement}`, err);
+
+            // Try a simple fallback: just extract the first identifier before '='
+            const simpleMatch = declarationStatement.match(/^\s*([a-zA-Z_$][\w$]*)\s*=/);
+            if (simpleMatch) {
+                variables.push({
+                    name: simpleMatch[1].trim(),
+                    value: '' // We can't safely extract the value without proper parsing
+                });
+            }
+        }
+
+        return variables;
     }
 
     /**
@@ -449,13 +499,13 @@ class JSHypertextPreprocessor {
         let currentlyProcessingFunction = null;
         let currentBraceDepth = 0;
         const contextVarSet = new Set(this.#currentContext.keys());
-        
+
         // Process the code line by line
         const lines = code.split('\n').map((line) => {
             // Function declarations handling
             const arrowMatch = line.match(this.#regex.arrowFunction);
             const funcMatch = line.match(this.#regex.functionDeclaration);
-    
+
             if (arrowMatch || funcMatch) {
                 const funcName = arrowMatch ? arrowMatch[1] : funcMatch[1];
                 if (!line.includes('{')) {
@@ -465,11 +515,11 @@ class JSHypertextPreprocessor {
                 currentBraceDepth = 1;
                 return line;
             }
-    
+
             if (currentlyProcessingFunction) {
                 currentBraceDepth += (line.match(/{/g) || []).length;
                 currentBraceDepth -= (line.match(/}/g) || []).length;
-    
+
                 if (currentBraceDepth === 0) {
                     const funcName = currentlyProcessingFunction;
                     currentlyProcessingFunction = null;
@@ -477,59 +527,60 @@ class JSHypertextPreprocessor {
                 }
                 return line;
             }
-    
+
             // Handle conditional scope injections
             let processedLine = line;
-            
+
             // Handle $ function calls with conditionalScope
             if (line.trim().startsWith('$')) {
                 // Handle else and end - replace with just the scope parameter
                 if (this.#regex.conditionalNoParams.test(line)) {
-                    return line.replace(this.#regex.conditionalNoParams, "$1($.conditionalScope)");
+                    return line.replace(this.#regex.conditionalNoParams, '$1($.conditionalScope)');
                 }
-                
+
                 // Handle if, elseif, echo and include with proper parameter parsing
                 const match = line.match(/(\$\.?(?:if|echo|elseif|include))\(/);
                 if (match) {
                     const functionStart = match.index;
                     const paramsStart = functionStart + match[0].length;
                     const closingParenIndex = this.#findClosingParenIndex(line, paramsStart);
-                    
+
                     if (closingParenIndex !== -1) {
                         const params = line.substring(paramsStart, closingParenIndex);
                         const functionName = match[1];
-                        return line.substring(0, functionStart) + 
-                            functionName + "(" + params + ", $.conditionalScope)" + 
-                            line.substring(closingParenIndex + 1);
+                        return `${line.substring(0, functionStart) +
+                            functionName}(${params}, $.conditionalScope)${
+                            line.substring(closingParenIndex + 1)}`;
                     }
                 }
-                
+
                 return line;
             }
-    
+
             // Process variable declarations
             processedLine = line.replace(this.#regex.declaration, (match, declarationList) => {
                 let result = match;
-                let varMatch;
-    
-                this.#regex.variables.lastIndex = 0;
-                while ((varMatch = this.#regex.variables.exec(declarationList)) !== null) {
-                    const varName = varMatch[1].trim();
-    
+
+                // Use AST-based parsing instead of regex to properly handle string literals
+                const variables = this.#parseVariableDeclarations(declarationList);
+
+                for (const variable of variables) {
+                    const varName = variable.name;
+
                     if (this.#constants.has(varName)) {
                         const constValue = this.#constants.get(varName);
                         const valueStr = this.#serializeValue(constValue);
                         result = `$.echo(\`<< Error: Attempt to redeclare defined constant '${varName}'. >>\`);
-                                  ${varName} = ${valueStr};`;
+                                ${varName} = ${valueStr};`;
                     } else if (!match.startsWith('var')) {
                         currentDeclarations.add(varName);
                         result += `\n$.context('${varName}', ${varName});`;
                     }
                 }
-    
+
                 return result;
             });
-    
+
             // Handle reassignments
             if (!processedLine.includes('$')) {
                 processedLine = processedLine.replace(this.#regex.reassignment, (match, varName) => {
@@ -539,7 +590,7 @@ class JSHypertextPreprocessor {
                         return `$.echo(\`<< Error: Attempt to redeclare defined constant '${varName}'. >>\`);
                                 \n${varName} = ${valueStr};`;
                     }
-    
+
                     if (!match.includes('const ') && !match.includes('let ') && !match.includes('var ')) {
                         currentDeclarations.add(varName);
                         return `${match}\n$.context('${varName}', ${varName});`;
@@ -547,32 +598,32 @@ class JSHypertextPreprocessor {
                     return match;
                 });
             }
-    
+
             return processedLine;
         });
-    
+
         // Add constants to injections
         for (const [key, value] of this.#constants.entries()) {
             const valueStr = this.#serializeValue(value);
             injections.push(`const ${key} = ${valueStr};`);
         }
-    
+
         // Add context variables to injections
         for (const [key, value] of this.#currentContext.entries()) {
             const valueStr = this.#serializeValue(value);
             injections.push(`var ${key} = ${valueStr};`);
         }
-    
+
         // Join code and apply single-pass transformation
         let modifiedCode = lines.join('\n');
-    
+
         // Apply single-pass transformation for redeclarations
         if (contextVarSet.size > 0) {
-            const varNames = Array.from(contextVarSet).map(name => this.escapeRegExp(name)).join('|');
+            const varNames = Array.from(contextVarSet).map((name) => { return this.escapeRegExp(name); }).join('|');
             const declPattern = new RegExp(`\\b(const|let)\\s+(${varNames})\\b`, 'g');
-            modifiedCode = modifiedCode.replace(declPattern, (match, declType, varName) => varName);
+            modifiedCode = modifiedCode.replace(declPattern, (match, declType, varName) => { return varName; });
         }
-    
+
         // Final transformations
         modifiedCode = this.#walkAndReplaceScriptParts(`${injections.join('\n')}\n${modifiedCode}`);
         return modifiedCode;
@@ -605,7 +656,7 @@ class JSHypertextPreprocessor {
             context,
             cwd,
             processors,
-            relPath,
+            relPath
         } = mergedOptions;
 
         // Reset state for new file processing
@@ -643,7 +694,7 @@ class JSHypertextPreprocessor {
 
         // Determine root directory if its not already set
         const inputIsCodeNotAPath = this.isCodeNotPath(fileOrCode);
-        if(inputIsCodeNotAPath) {
+        if (inputIsCodeNotAPath) {
             if (!this.#rootDir) {
                 this.#rootDir = cwd || process.cwd();
             }
@@ -680,7 +731,7 @@ class JSHypertextPreprocessor {
 
         const parser = new SimpleHtmlParser(this.#jhpTags);
         const scriptTags = parser.getSpecialTags();
-        
+
         try {
             let templateText = fileOrCode;
             if (!isCodeNotPath) {
@@ -704,7 +755,7 @@ class JSHypertextPreprocessor {
         let lastIndex = 0;
 
         // Create a regex pattern that matches any of the tags
-        const tagPattern = tags.map(tag => this.escapeRegExp(tag)).join('|');
+        const tagPattern = tags.map((tag) => { return this.escapeRegExp(tag); }).join('|');
 
         // We must declare this here to avoid issues with the regex lastIndex property
         const regex = new RegExp(`<(${tagPattern})>([\\s\\S]*?)<\\/\\1>`, 'g');
@@ -723,19 +774,19 @@ class JSHypertextPreprocessor {
                     conditionalBlockOpen = false;
                     return;
                 }
-    
+
                 // If a block has already been shown, no others should be shown
                 if (blockHasBeenShown) {
                     addBlockContentToBuffer = false;
                     return;
                 }
-    
+
                 // If no black has been shown, only show if the result is true
                 if (!result) {
                     addBlockContentToBuffer = false;
                     return;
                 }
-    
+
                 // This block passed, so show it change the output flags
                 addBlockContentToBuffer = true;
                 blockHasBeenShown = true;
@@ -768,11 +819,12 @@ class JSHypertextPreprocessor {
                 this.#currentBuffer.push(`<< Error: ${err.message}. >>`);
             }
 
+            // eslint-disable-next-line prefer-destructuring
             lastIndex = regex.lastIndex;
         }
-        
+
         if (conditionalBlockOpen) {
-            this.#currentBuffer.push('<< Error: Unclosed conditional block detected. >>')
+            this.#currentBuffer.push('<< Error: Unclosed conditional block detected. >>');
         }
 
         // Add remaining HTML content after last script block
@@ -789,7 +841,7 @@ class JSHypertextPreprocessor {
         get it to work properly. The issue we need process the node in order but
         if a script tag is not at the root of an element, we don't see it and
         toHtml just returns the inner content.
-        
+
         for (const node of dom.children) {
             if (!node.scriptBlock) {
                 // Process HTML content
@@ -800,14 +852,14 @@ class JSHypertextPreprocessor {
                 }
                 continue;
             }
-            
+
             // Remove script blocks from the DOM; both open and close tags
             node.remove();
 
             if (node.type === 'tag-close') {
                 continue;
             }
-            
+
             // Process script
             let scriptContent = node.innerHtml();
             try {
@@ -882,13 +934,13 @@ class JSHypertextPreprocessor {
             // Remove the leading slash and resolve from the root directory
             const relativeToRoot = file.substring(1);
             const resolvedPath = Path.resolve(this.#rootDir, relativeToRoot);
-            
+
             if (Fs.existsSync(resolvedPath)) {
                 return resolvedPath;
             }
             return null;
         }
-        
+
         // If it's already an absolute path, return it directly
         if (Path.isAbsolute(file)) {
             return Fs.existsSync(file) ? file : null;
@@ -1070,12 +1122,65 @@ class JSHypertextPreprocessor {
             // Apply transformations in reverse order to avoid index shift issues
             return transformations
                 .sort((a, b) => { return b[0] - a[0]; })
-                 
+
                 .reduce((code, [start, end, replacement]) => { return code.slice(0, start) + replacement + code.slice(end); }, code);
 
-         
+        // eslint-disable-next-line no-unused-vars
         } catch (err) {
             return code;
+        }
+    }
+
+    /**
+     * Recursively walks an AST node to extract variable declarations.
+     * This helper method identifies VariableDeclarator nodes and extracts
+     * the variable names and their initial values.
+     *
+     * @param {Object} node - AST node to walk
+     * @param {Array} variables - Array to accumulate found variables
+     * @private
+     */
+    #walkVariableDeclarations(node, variables) {
+        if (!node || typeof node !== 'object') {
+            return;
+        }
+
+        // Handle VariableDeclarator nodes (the actual variable assignments)
+        if (node.type === 'VariableDeclarator') {
+            if (node.id && node.id.type === 'Identifier') {
+                const varName = node.id.name;
+                let varValue = null;
+
+                // Extract the initial value if present
+                if (node.init) {
+                    // Get the raw source text for the initial value
+                    // This preserves the original formatting and handles complex expressions
+                    if (node.init.raw !== undefined) {
+                        varValue = node.init.raw;
+                    } else if (node.init.type === 'Literal') {
+                        varValue = JSON.stringify(node.init.value);
+                    } else {
+                        // For complex expressions, we'll set to null
+                        // The original code didn't handle complex expressions anyway
+                        varValue = null;
+                    }
+                }
+
+                variables.push({
+                    name: varName,
+                    value: varValue
+                });
+            }
+        }
+
+        // Recursively walk child nodes
+        for (const key in node) {
+            const child = node[key];
+            if (Array.isArray(child)) {
+                child.forEach((childNode) => { return this.#walkVariableDeclarations(childNode, variables); });
+            } else if (child && typeof child === 'object') {
+                this.#walkVariableDeclarations(child, variables);
+            }
         }
     }
 

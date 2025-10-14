@@ -25,6 +25,8 @@
      */
     $content = $obClose();
     let title = 'Output Buffering';
+    let keywords = 'jhp, javascript, html, template, output buffering';
+    let description = 'A test page demonstrating the use of output buffering functions in JHP.';
     $include('./partials/header.html');
     $echo(`\n${$content}\n`);
     $include('./partials/footer.html');

@@ -1,5 +1,7 @@
 <script>
     let title = 'Home';
+    let keywords = 'jhp, javascript, html, template';
+    let description = 'The home page of this simple JHP test example project.';
     $include('./partials/header.html');
 </script>
 

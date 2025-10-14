@@ -999,13 +999,13 @@ class SimpleHtmlParser {
                     node.scriptBlock = true;
                     const closeTag = `</${tagName}>`;
                     const closeTagPos = html.indexOf(closeTag, tagEnd);
-                
+
                     if (closeTagPos !== -1) {
                         // Process content as a mix of comments and text
                         const scriptContent = html.substring(tagEnd + 1, closeTagPos);
-                
+
                         // Parse JS comments with proper context awareness
-                        let position = 0;
+                        const position = 0;
                         let inString = false;
                         let stringChar = '';
                         let inRegex = false;
@@ -1013,17 +1013,17 @@ class SimpleHtmlParser {
                         let commentType = '';
                         let commentStart = -1;
                         let textStart = position;
-                
+
                         for (let i = 0; i < scriptContent.length; i++) {
                             const char = scriptContent[i];
                             const nextChar = i < scriptContent.length - 1 ? scriptContent[i + 1] : '';
                             const prevChar = i > 0 ? scriptContent[i - 1] : '';
-                
+
                             // Handle escape sequences
                             if (prevChar === '\\') {
                                 continue;
                             }
-                
+
                             // String handling
                             if (!inComment && !inRegex && (char === '"' || char === "'" || char === '`')) {
                                 if (!inString) {
@@ -1034,19 +1034,19 @@ class SimpleHtmlParser {
                                 }
                                 continue;
                             }
-                
+
                             // Regex handling (simplified - real JS parsers do more)
-                            if (!inComment && !inString && char === '/' && prevChar !== '*' && 
+                            if (!inComment && !inString && char === '/' && prevChar !== '*' &&
                                 (i === 0 || /[\(\[{,;=:&|!?]/.test(scriptContent[i - 1]))) {
                                 inRegex = true;
                                 continue;
                             }
-                            
+
                             if (inRegex && char === '/' && prevChar !== '\\') {
                                 inRegex = false;
                                 continue;
                             }
-                
+
                             // Comment handling
                             if (!inString && !inRegex && !inComment) {
                                 if (char === '/' && nextChar === '/') {
@@ -1060,7 +1060,7 @@ class SimpleHtmlParser {
                                     inComment = true;
                                     commentType = 'js-single-line';
                                     commentStart = i + 2; // Skip the //
-                                    i++; // Skip the next character
+                                    i += 1; // Skip the next character
                                     continue;
                                 } else if (char === '/' && nextChar === '*') {
                                     // Found start of multi-line comment
@@ -1073,7 +1073,7 @@ class SimpleHtmlParser {
                                     inComment = true;
                                     commentType = 'js-multi-line';
                                     commentStart = i + 2; // Skip the /*
-                                    i++; // Skip the next character
+                                    i += 1; // Skip the next character
                                     continue;
                                 }
                             } else if (inComment) {
@@ -1083,7 +1083,7 @@ class SimpleHtmlParser {
                                     commentNode.content = scriptContent.substring(commentStart, i);
                                     commentNode.commentType = commentType;
                                     node.appendChild(commentNode);
-                
+
                                     inComment = false;
                                     textStart = i + 1; // Start new text after this line break
                                 } else if (commentType === 'js-multi-line' && char === '*' && nextChar === '/') {
@@ -1092,14 +1092,14 @@ class SimpleHtmlParser {
                                     commentNode.content = scriptContent.substring(commentStart, i);
                                     commentNode.commentType = commentType;
                                     node.appendChild(commentNode);
-                
+
                                     inComment = false;
                                     textStart = i + 2; // Start new text after the */
-                                    i++; // Skip the next character
+                                    i += 1; // Skip the next character
                                 }
                             }
                         }
-                
+
                         // Handle any remaining text or unclosed comment
                         if (inComment) {
                             // Unclosed comment
@@ -1113,14 +1113,14 @@ class SimpleHtmlParser {
                             textNode.content = scriptContent.substring(textStart);
                             node.appendChild(textNode);
                         }
-                
+
                         // Create and add the closing tag node
                         const closeNode = new Node('tag-close', tagName, {}, currentNode);
                         closeNode.scriptBlock = true;
-                
+
                         // Add the closing tag at the same level as the opening tag
                         currentNode.appendChild(closeNode);
-                
+
                         pos = closeTagPos + closeTag.length;
                         continue;
                     }

@@ -17,13 +17,13 @@ JS Hypertext Preprocessor (JHP) is a **developer-focused JavaScript templating e
 
 ## How It Works
 
-JHP processes files &ndash; commonly `.jhp` files but you can choose the extension by what file you hand to the engine &ndash; containing raw HTML with special `<jhp>` blocks, transforming them into static HTML. The engine specifically executes `<jhp>` or `<s_>` tags **without attributes** in a server-side context, enabling dynamic content generation. This flexibility allows developers to:
-- Use built-in `$` functions within server-side `<jhp>` or `<s_>` blocks to manage output, include files, or define constants.
-- Declare variables or functions in one `<jhp>` or `<s_>` block and reuse them in later blocks, maintaining context across the file.
+JHP processes files &ndash; commonly `.jhp` files but you can choose the extension by what file you hand to the engine &ndash; containing raw HTML with special `<script>` blocks, transforming them into static HTML. The engine specifically executes `<script>` tags **without attributes** in a server-side context, enabling dynamic content generation. This flexibility allows developers to:
+- Use built-in `$` functions within server-side `<script>` blocks to manage output, include files, or define constants.
+- Declare variables or functions in one `<script>` block and reuse them in later blocks, maintaining context across the file.
 - Capture and reuse parts of the output with the output buffer.
 - Modularize templates with nested file includes.
 
-**Note:** The `<script>` tag is included by default as a JHP tag to ensure code editors automatically highlight and provide IntelliSense for JHP blocks. In the future I hope to add IDE support for JHP tags.
+**Note:** The `<script>` tag is included by default as a JHP tag to ensure code editors automatically highlight and provide IntelliSense for JHP blocks. In the future I hope to add IDE support for `<jhp>` tags.
 
 ## Example Setup
 
@@ -121,7 +121,7 @@ The home page's content here...
 </html>
 ```
 
-**Note:** You can replace the `<jhp>` tags with `<s_>` tags if you prefer the shorter syntax. The engine will process both tags in the same way. Additionally, you can register any custom tag when constructing the JHP object. However, if you choose to register `<script>` as a JHP tag, ensure your `<script>` tags have at least one attribute (e.g., `<script type="text/javascript">`) to include frontend JavaScript intended for the browser, as JHP will ignore tags with attributes.
+**Note:** To include frontend JavaScript for the browser, add at least one attribute to your `<script>` tags (such as `<script type="text/javascript">`). JHP only processes `<script>` tags without attributes; those with attributes are ignored and treated as standard client-side scripts.
 
 ## Built-in `$` Functions
 

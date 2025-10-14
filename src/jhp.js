@@ -2,9 +2,10 @@
 import * as acornLoose from 'acorn-loose';
 import Fs from 'fs';
 import Path from 'path';
+import pkg from '../package.json' with { type: 'json' };
 import { SimpleHtmlParser } from './simple-html-parser.js';
 
-const VERSION = '2.4.0';
+const { version: VERSION } = pkg;
 
 /**
  * JavaScript Hypertext Preprocessor (JHP) is a preprocessor that handles HTML files with embedded

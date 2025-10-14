@@ -1,5 +1,7 @@
 <script>
     let title = 'Conditional Statements';
+    let keywords = 'jhp, javascript, html, template, conditionals';
+    let description = 'A test page demonstrating the use of conditional statements in JHP.';
     $include('./partials/header.html');
 </script>
 

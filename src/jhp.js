@@ -2,10 +2,9 @@
 import * as acornLoose from 'acorn-loose';
 import Fs from 'fs';
 import Path from 'path';
-import pkg from '../package.json' with { type: 'json' };
 import { SimpleHtmlParser } from './simple-html-parser.js';
 
-const { version: VERSION } = pkg;
+const VERSION = '2.6.0';
 
 /**
  * JavaScript Hypertext Preprocessor (JHP) is a preprocessor that handles HTML files with embedded
@@ -275,9 +274,11 @@ class JSHypertextPreprocessor {
     addPreProcessor(preProcessors) {
         if (Array.isArray(preProcessors)) {
             for (const preProcessor of preProcessors) {
-                this.#processors.pre.add(preProcessor);
+                if (typeof preProcessor === 'function') {
+                    this.#processors.pre.add(preProcessor);
+                }
             }
-        } else {
+        } else if (typeof preProcessors === 'function') {
             this.#processors.pre.add(preProcessors);
         }
     }
@@ -289,9 +290,11 @@ class JSHypertextPreprocessor {
     addPostProcessor(postProcessors) {
         if (Array.isArray(postProcessors)) {
             for (const postProcessor of postProcessors) {
-                this.#processors.post.add(postProcessor);
+                if (typeof postProcessor === 'function') {
+                    this.#processors.post.add(postProcessor);
+                }
             }
-        } else {
+        } else if (typeof postProcessors === 'function') {
             this.#processors.post.add(postProcessors);
         }
     }
@@ -727,6 +730,7 @@ class JSHypertextPreprocessor {
      */
     #processFile(fileOrCode, isCodeNotPath = undefined) {
         if (isCodeNotPath === undefined) {
+            // eslint-disable-next-line no-param-reassign
             isCodeNotPath = this.isCodeNotPath(fileOrCode);
         }
 

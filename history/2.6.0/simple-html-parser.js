@@ -1,7 +1,7 @@
 /* eslint-disable func-names */
 /* eslint-disable no-continue */
 
-const VERSION = '1.1.0';
+const VERSION = '1.3.0';
 
 /**
  * Represents a DOM node in the parsed HTML tree.
@@ -244,6 +244,18 @@ class Node {
             this.children.push(node);
         }
         return nodes;
+    }
+
+    /**
+     * Creates a new Node instance.
+     * @param {string} type - Node type ('comment', 'text', 'root', 'tag-close', 'tag-open')
+     * @param {string} [name=''] - Tag name for element nodes
+     * @param {Object.<string, string>} [attributes={}] - Node attributes
+     * @param {Node|null} [parent=null] - Parent node
+     * @returns {Node} The created Node instance
+     */
+    createNode(type, name = '', attributes = {}, parent = null) {
+        return new Node(type, name, attributes, parent);
     }
 
     /**
@@ -578,8 +590,14 @@ class Node {
         return result;
     }
 
-    removeAttribute(name) {
-        delete this.attributes[name];
+    /**
+     * Gets the full HTML representation of this node including its own tags and children.
+     * @alias toHtml
+     * @param {boolean} [showComments=false] - Whether to include comments in the output
+     * @returns {string} Full HTML representation of the node
+     */
+    outerHtml(showComments = false) {
+        return this.toHtml(showComments);
     }
 
     /**
@@ -655,6 +673,14 @@ class Node {
             }
         }
         return this;
+    }
+
+    /**
+     * Removes an attribute from the node.
+     * @param {string} name - Attribute name to remove
+     */
+    removeAttribute(name) {
+        delete this.attributes[name];
     }
 
     /**
@@ -735,6 +761,24 @@ class Node {
     }
 
     /**
+     * Updates an attribute by appending a value with an optional separator. If the attribute does
+     * not exist, it is created.
+     * @param {string} name - Attribute name
+     * @param {string} value - Value to append
+     * @param {string} [separator=' '] - Separator to use when appending
+     */
+    updateAttribute(name, value, separator = ' ') {
+        if (!(name in this.attributes)) {
+            this.attributes[name] = value;
+            return;
+        }
+        const currentValue = this.attributes[name];
+        if (!currentValue.split(separator).includes(value)) {
+            this.attributes[name] = `${currentValue}${separator}${value}`;
+        }
+    }
+
+    /**
      * Generates a visual representation of the DOM tree starting from this node.
      * @param {Object} [options] - Visualization options
      * @param {number} [options.contentPreviewLength=20] - Maximum length for content previews
@@ -789,8 +833,8 @@ class Node {
             if (!showAttributes || Object.keys(attrs).length === 0) return '';
 
             return ` ${Object.entries(attrs)
-                // eslint-disable-next-line arrow-body-style, no-extra-parens
-                .map(([k, v]) => (v === '__EMPVAL__' ? k : `${k}="${v}"`))
+                // eslint-disable-next-line no-extra-parens
+                .map(([k, v]) => { return (v === '__EMPVAL__' ? k : `${k}="${v}"`); })
                 .join(' ')}`;
         };
 
@@ -907,12 +951,21 @@ class SimpleHtmlParser {
 
     /**
       * Creates a new parser instance.
+      *
+      * NOTE: The default special tags 'jhp' and 's_' are tags we hoped to support but are no longer
+      * planning to implement. You can override this list as needed for similar custom tags or HTML
+      * elements you want to treat as text blocks.
+      *
       * @param {string[]} [specialTags=['jhp', 's_']] - Tags where content is treated as text
       */
     constructor(specialTags = ['jhp', 's_']) {
         this.#specialTags = specialTags;
     }
 
+    /**
+     * Gets the list of special tags.
+     * @returns {string[]} Array of special tag names
+     */
     getSpecialTags() {
         return [...this.#specialTags];
     }
@@ -1189,6 +1242,10 @@ class SimpleHtmlParser {
         return root;
     }
 
+    /**
+     * Gets the version of the SimpleHtmlParser library.
+     * @returns {string} Version string
+     */
     version() {
         return `Simple Html Parser v${VERSION}`;
     }

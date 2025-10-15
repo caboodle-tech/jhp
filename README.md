@@ -58,8 +58,12 @@ The home page's content here...
 
 ```html
 <script>
-    $default('pageTitle', 'Home Page');
-    $default('description', 'Welcome to our amazing site!');
+    if (!pageTitle) {
+        let title = 'Home Page';
+    }
+    if (!description) {
+        let description = 'Welcome to our amazing site!';
+    }
 
     $echo($include('./partials/header.html'));
     $echo(`<main class="content-grid">${mainContent}</main>`);

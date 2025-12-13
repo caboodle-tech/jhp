@@ -146,7 +146,7 @@ Function | Description
 `$obStatus()`          | Checks if the output buffer is currently open.
 `$version()`           | Returns the JHP version string.
 
-For more information on how to properly use these functions, refer to the [example files](./test/src/) in the `test` directory.
+For more information on how to properly use these functions, refer to the [example files](./examples/src/) in the `examples` directory.
 
 ## Installation
 
@@ -155,10 +155,41 @@ To use JHP, include it as part of your build process for generating static pages
 ```js
 import JHP from 'jhp';
 
-const jhp = new JHP();
+const jhp = new JHP(); // <-- This accepts the same options {} as the process method
 const html = jhp.process('./template.jhp');
 console.log(html);
 ```
+
+### Using Process Options
+
+The `process` method accepts an options object to customize processing for individual files:
+
+```js
+import JHP from 'jhp';
+
+const jhp = new JHP();
+
+// Process with context variables and custom processors
+const html = jhp.process('./template.jhp', {
+    context: {
+        pageTitle: 'My Page',
+        userName: 'John Doe'
+    },
+    preProcessors: [myPreProcessor],
+    postProcessors: [myPostProcessor],
+    cwd: './templates',
+    relPath: '/blog'
+});
+```
+
+Available options:
+- `context` - Initial variables and functions for template context (Object or Map)
+- `preProcessors` - Array of preprocessor functions to apply for this file
+- `postProcessors` - Array of postprocessor functions to apply for this file
+- `cwd` - Current working directory for file resolution
+- `relPath` - Relative path for URL resolution
+
+**Note:** Pre-processors operate on the raw JHP structure (before JHP code is replaced), while post-processors operate on the fully parsed DOM after all JHP code has been replaced with HTML. This means pre-processors can access and modify JHP script blocks, while post-processors work with the final HTML structure.
 
 ## Caution
 

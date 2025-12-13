@@ -21,7 +21,7 @@ body {
     display: flex;
     flex-direction: column;
 
-    & * {
+    * {
         box-sizing: border-box;
     }
 }
@@ -42,18 +42,18 @@ header {
     color: white;
     box-shadow: var(--shadow);
 
-    & nav {
+    nav {
         margin-top: 1rem;
 
-        & ul {
+        ul {
             display: flex;
             list-style: none;
             padding: 0;
             margin: 0;
             gap: 1rem;
 
-            & li {
-                & a {
+            li {
+                a {
                     color: var(--light);
                     text-decoration: none;
                     padding: 0.5rem 1rem;
@@ -82,17 +82,17 @@ main {
     box-shadow: var(--shadow);
     margin: 2rem auto;
 
-    & h1 {
+    h1 {
         color: var(--secondary);
         margin-top: 0;
         border-bottom: 2px solid var(--light);
         padding-bottom: 0.5rem;
     }
 
-    & p {
+    p {
         margin-bottom: 1.5rem;
 
-        & code {
+        code {
             background-color: var(--light);
             padding: 0.2rem 0.4rem;
             border-radius: 4px;
@@ -101,7 +101,7 @@ main {
         }
     }
 
-    & blockquote {
+    blockquote {
         border-left: 4px solid var(--primary);
         background-color: rgba(52, 152, 219, 0.1);
         margin: 1.5rem 0;
@@ -109,13 +109,22 @@ main {
         border-radius: 0 8px 8px 0;
         position: relative;
 
-        & p {
+        p {
             font-size: 1.1rem;
             font-weight: 500;
             font-style: italic;
             margin: 0;
             color: var(--secondary);
         }
+    }
+
+    .processor-msg {
+        border-left: 4px solid var(--secondary);
+        background-color: var(--light);
+        margin: 0;
+        padding: 1rem 1.5rem;
+        border-radius: 0 8px 8px 0;
+        position: relative;
     }
 }
 
@@ -133,10 +142,10 @@ footer {
     header nav ul {
         flex-direction: column;
 
-        & li {
+        li {
             margin-bottom: 0.5rem;
 
-            & a {
+            a {
                 display: block;
                 text-align: center;
             }

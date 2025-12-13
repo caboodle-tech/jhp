@@ -2,11 +2,38 @@ import Fs from 'fs';
 import JHP from '../src/jhp.js';
 import Path from 'path';
 import { fileURLToPath } from 'url';
+import { Node } from '@caboodle-tech/simple-html-parser';
 
 // Setup important variables
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = Path.dirname(__filename);
-const jhp = new JHP();
+
+// Example of a pre-processor function
+const addPreProcessorMessage = (scope) => {
+    const dom = scope.dom;
+    const main = dom.querySelector('main');
+    
+    if (main) {
+        const div = dom.createNode(
+            'div',
+            { class: 'processor-msg' },
+            'This message was added with a pre-processor function.'
+        );
+        main.appendChild(div);
+    }
+};
+
+// Example of a post-processor function
+const addPostProcessorMessage = (scope) => {
+    const dom = scope.dom;
+    const main = dom.querySelector('main');
+    const div = dom.createNode(
+        'div',
+        { class: 'processor-msg' },
+        'This message was added with a post-processor function.'
+    );
+    main.appendChild(div);
+};
 
 /**
  * NOTE: JHP now automatically loads its built-in processors so you don't need to. You can disable
@@ -17,12 +44,16 @@ const jhp = new JHP();
  * object of the `process` method. For example:
  *
  * jhp.process(filePath, {
- *     pre: [processors.pre],
- *     post: [processors.post]
+ *     postProcessors: [f()],
+ *     preProcessors: [f()]
  * });
  */
+const jhp = new JHP({
+    postProcessors: [addPostProcessorMessage],
+    preProcessors: [addPreProcessorMessage]
+});
 
-// Create output directory
+// Create output directories
 const outputDir = Path.join(__dirname, 'www');
 if (!Fs.existsSync(outputDir)) {
     Fs.mkdirSync(outputDir, { recursive: true });
@@ -52,7 +83,7 @@ try {
     });
 } catch (error) {
     console.error(error);
-    exit(1);
+    process.exit(1);
 }
 
-console.log('Test completed successful. Verify the output in the `./test/www/` directory.');
+console.log('Demo completed successfully. Verify the output in the `./examples/www/` directory.');

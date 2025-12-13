@@ -2,10 +2,16 @@
 import * as acornLoose from 'acorn-loose';
 import Fs from 'fs';
 import Path from 'path';
+import { fileURLToPath } from 'url';
 import Processors from './processors.js';
 import { SimpleHtmlParser } from '@caboodle-tech/simple-html-parser';
 
-const VERSION = '3.1.0';
+// Read version from package.json automatically
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = Path.dirname(__filename);
+const packageJsonPath = Path.resolve(__dirname, '../package.json');
+const packageJson = JSON.parse(Fs.readFileSync(packageJsonPath, 'utf8'));
+const VERSION = packageJson.version;
 
 /**
  * JavaScript Hypertext Preprocessor (JHP) is a preprocessor that handles HTML files with embedded
@@ -650,9 +656,8 @@ class JSHypertextPreprocessor {
      * @param {Object} [options.context] Initial variables and functions for template context
      * @param {string|null} [options.relPath] Relative path for URL resolution; devs should predetermine this on the initial call
      * @param {string} [options.cwd] Current working directory for file resolution; devs should predetermine this on the initial call
-     * @param {Object} [options.processors] Pre and post processors for template processing
-     * @param {Function[]} [options.processors.pre] Array of preprocessor functions to add
-     * @param {Function[]} [options.processors.post] Array of postprocessor functions to add
+     * @param {Function[]} [options.preProcessors] Array of preprocessor functions to add
+     * @param {Function[]} [options.postProcessors] Array of postprocessor functions to add
      * @returns {string} Processed template content
      */
     process(fileOrCode, options = {}) {
@@ -660,7 +665,8 @@ class JSHypertextPreprocessor {
         const mergedOptions = {
             context: {},
             cwd: null,
-            processors: { pre: [], post: [] },
+            postProcessors: [],
+            preProcessors: [],
             relPath: null,
             ...options
         };
@@ -669,7 +675,8 @@ class JSHypertextPreprocessor {
         const {
             context,
             cwd,
-            processors,
+            postProcessors,
+            preProcessors,
             relPath
         } = mergedOptions;
 
@@ -694,10 +701,10 @@ class JSHypertextPreprocessor {
         }
 
         // Add temporary processors if provided
-        for (const processor of processors.pre) {
+        for (const processor of preProcessors) {
             this.#tmpProcessors.pre.add(processor);
         }
-        for (const processor of processors.post) {
+        for (const processor of postProcessors) {
             this.#tmpProcessors.post.add(processor);
         }
 

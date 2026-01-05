@@ -4,6 +4,8 @@
 
 JS Hypertext Preprocessor (JHP) is a **developer-focused JavaScript templating engine** designed to rival static site generators by leveraging **native JavaScript** instead of introducing custom templating syntaxes. Inspired by PHP, JHP allows developers to use raw HTML and familiar JavaScript to build dynamic templates for static site generation during local development.
 
+**Important:** JHP is a library that you **integrate into your build process** or server application. It is not a standalone command-line tool. You need to write code that uses JHP to process your template files. See the [Installation](#installation) section for details.
+
 **Note:** JHP can be used as a production server, similar to PHP, but please exercise caution as it has not been fully tested for that use and may have potential security concerns. It is primarily designed for local development environments and static site generation workflows.
 
 ## Features
@@ -150,22 +152,60 @@ For more information on how to properly use these functions, refer to the [examp
 
 ## Installation
 
-To use JHP, include it as part of your build process for generating static pages, or integrate it into a server to dynamically build responses. Example usage in a Node.js script:
+JHP is not a standalone tool &ndash; you need to **integrate it into your build process** or server application. You can use JHP in two ways:
+
+### Option 1: Install via npm (Recommended)
+
+Install JHP as an npm package:
+
+```bash
+npm install @caboodle-tech/jhp
+```
+
+Then import it in your project:
 
 ```js
-import JHP from 'jhp';
+import JHP from '@caboodle-tech/jhp';
 
 const jhp = new JHP(); // <-- This accepts the same options {} as the process method
 const html = jhp.process('./template.jhp');
 console.log(html);
 ```
 
+### Option 2: Copy Source Files (Manual)
+
+If you prefer to manually include JHP in your project, you can copy the files from the `src` directory directly into your project. You only need:
+- `src/jhp.js`
+- `src/processors.js`
+
+Then import and use it in your build script:
+
+```js
+import JHP from './path/to/jhp.js';
+
+const jhp = new JHP(); // <-- This accepts the same options {} as the process method
+const html = jhp.process('./template.jhp');
+console.log(html);
+```
+
+**Note:** Make sure to install JHP's dependencies (`@caboodle-tech/simple-html-parser` and `acorn-loose`) in your project if you use this approach.
+
+### Building JHP into Your Process
+
+Regardless of which installation method you choose, **you must write code to integrate JHP into your build process**. JHP doesn't run automatically &ndash; you need to create a script that:
+
+1. Instantiates the JHP class
+2. Calls `jhp.process()` for each template file
+3. Writes the output to your desired location
+
+See the [example build script](./examples/index.js) for a complete implementation.
+
 ### Using Process Options
 
 The `process` method accepts an options object to customize processing for individual files:
 
 ```js
-import JHP from 'jhp';
+import JHP from '@caboodle-tech/jhp'; // or './path/to/jhp.js' if using manual installation
 
 const jhp = new JHP();
 

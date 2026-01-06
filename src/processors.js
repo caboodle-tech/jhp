@@ -3,7 +3,7 @@ const rootRelativeToRelativeUrls = (scope) => {
 
     // Process root-relative URLs in the DOM
     if (scope.relPath !== null) {
-        for (const node of dom) {
+        for (const node of scope.dom) {
             if (node.type === 'tag-open' && node.name !== 'pre') {
                 // Check each attribute for URL patterns
                 for (const [attr, value] of Object.entries(node.attributes)) {

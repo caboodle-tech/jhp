@@ -7,7 +7,7 @@
         "Caboodle Tech Inc (https://github.com/caboodle-tech)"
     ],
     "dependencies": {
-        "@caboodle-tech/simple-html-parser": "^2.3.0",
+        "@caboodle-tech/simple-html-parser": "^2.5.0",
         "acorn-loose": "^8.5.2"
     },
     "description": "JS Hypertext Preprocessor (JHP) is a JavaScript templating engine for dynamic static site generation, using native JavaScript and HTML, inspired by PHP.",

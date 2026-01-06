@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@caboodle-tech/simple-html-parser':
-        specifier: ^2.3.0
-        version: 2.3.0
+        specifier: ^2.5.0
+        version: 2.5.0
       acorn-loose:
         specifier: ^8.5.2
         version: 8.5.2
@@ -33,12 +33,12 @@ importers:
 
 packages:
 
-  '@caboodle-tech/simple-html-parser@2.3.0':
-    resolution: {integrity: sha512-fSSplVyBosL6zv25QHkY0/TOg+p2tj9bPuBu5aFplzmsBQJeO8+pNvCCQGwuMPgO5p9MGBFnGjGfWUtflbVcCQ==}
+  '@caboodle-tech/simple-html-parser@2.5.0':
+    resolution: {integrity: sha512-3Po7s0BnteT1j+4W/Wu1pNQKLUKGyXaqcKtOlzbZQ2Rabvac4kJUqyT4r+2Dp2o40nPRGDRb7wLiEAX6cLUmNA==}
     engines: {node: '>=22.0.0'}
 
-  '@eslint-community/eslint-utils@4.9.0':
-    resolution: {integrity: sha512-ayVFHdtZ+hsq1t2Dy24wCmGXGe4q9Gu3smhLYALJrr473ZH27MsnSL+LKUlimp4BWJqMDMLmPpx/Q9R3OAlL4g==}
+  '@eslint-community/eslint-utils@4.9.1':
+    resolution: {integrity: sha512-phrYmNiYppR7znFEdqgfWHXR6NCkZEK7hwWDHZUjit/2/U0r6XvkDl0SYnoM51Hq7FhCGdLDT6zxCCOY1hexsQ==}
     engines: {node: ^12.22.0 || ^14.17.0 || >=16.0.0}
     peerDependencies:
       eslint: ^6.0.0 || ^7.0.0 || >=8.0.0
@@ -241,8 +241,8 @@ packages:
     resolution: {integrity: sha512-oruZaFkjorTpF32kDSI5/75ViwGeZginGGy2NoOSg3Q9bnwlnmDm4HLnkl0RE3n+njDXR037aY1+x58Z/zFdwQ==}
     engines: {node: ^12.22.0 || ^14.17.0 || >=16.0.0}
 
-  esquery@1.6.0:
-    resolution: {integrity: sha512-ca9pw9fomFcKPvFLXhBKUK90ZvGibiGOvRJNbjljY7s7uq/5YO4BOzcYtJqExdx99rF6aAcnRxHmcUHcz6sQsg==}
+  esquery@1.7.0:
+    resolution: {integrity: sha512-Ap6G0WQwcU/LHsvLwON1fAQX9Zp0A2Y6Y/cJBl9r/JbW90Zyg4/zbG6zzKa2OTALELarYHmKu0GhpM5EO+7T0g==}
     engines: {node: '>=0.10'}
 
   esrecurse@4.3.0:
@@ -442,9 +442,9 @@ packages:
 
 snapshots:
 
-  '@caboodle-tech/simple-html-parser@2.3.0': {}
+  '@caboodle-tech/simple-html-parser@2.5.0': {}
 
-  '@eslint-community/eslint-utils@4.9.0(eslint@9.39.2)':
+  '@eslint-community/eslint-utils@4.9.1(eslint@9.39.2)':
     dependencies:
       eslint: 9.39.2
       eslint-visitor-keys: 3.4.3
@@ -590,12 +590,12 @@ snapshots:
   eslint-json-compat-utils@0.2.1(eslint@9.39.2)(jsonc-eslint-parser@2.4.2):
     dependencies:
       eslint: 9.39.2
-      esquery: 1.6.0
+      esquery: 1.7.0
       jsonc-eslint-parser: 2.4.2
 
   eslint-plugin-jsonc@2.21.0(eslint@9.39.2):
     dependencies:
-      '@eslint-community/eslint-utils': 4.9.0(eslint@9.39.2)
+      '@eslint-community/eslint-utils': 4.9.1(eslint@9.39.2)
       diff-sequences: 27.5.1
       eslint: 9.39.2
       eslint-compat-utils: 0.6.5(eslint@9.39.2)
@@ -619,7 +619,7 @@ snapshots:
 
   eslint@9.39.2:
     dependencies:
-      '@eslint-community/eslint-utils': 4.9.0(eslint@9.39.2)
+      '@eslint-community/eslint-utils': 4.9.1(eslint@9.39.2)
       '@eslint-community/regexpp': 4.12.2
       '@eslint/config-array': 0.21.1
       '@eslint/config-helpers': 0.4.2
@@ -639,7 +639,7 @@ snapshots:
       eslint-scope: 8.4.0
       eslint-visitor-keys: 4.2.1
       espree: 10.4.0
-      esquery: 1.6.0
+      esquery: 1.7.0
       esutils: 2.0.3
       fast-deep-equal: 3.1.3
       file-entry-cache: 8.0.0
@@ -668,7 +668,7 @@ snapshots:
       acorn-jsx: 5.3.2(acorn@8.15.0)
       eslint-visitor-keys: 3.4.3
 
-  esquery@1.6.0:
+  esquery@1.7.0:
     dependencies:
       estraverse: 5.3.0
 

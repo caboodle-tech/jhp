@@ -2,16 +2,10 @@
 import * as acornLoose from 'acorn-loose';
 import Fs from 'fs';
 import Path from 'path';
-import { fileURLToPath } from 'url';
 import Processors from './processors.js';
-import { SimpleHtmlParser } from '@caboodle-tech/simple-html-parser';
+import { SimpleHtmlParser } from './simple-html-parser.js';
 
-// Read version from package.json automatically
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = Path.dirname(__filename);
-const packageJsonPath = Path.resolve(__dirname, '../package.json');
-const packageJson = JSON.parse(Fs.readFileSync(packageJsonPath, 'utf8'));
-const VERSION = packageJson.version;
+const VERSION = '3.5.0';
 
 /**
  * JavaScript Hypertext Preprocessor (JHP) is a preprocessor that handles HTML files with embedded

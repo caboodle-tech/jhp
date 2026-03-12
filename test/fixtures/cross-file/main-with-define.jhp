@@ -1,0 +1,2 @@
+<script>$define('SHARED_CONST', 'ConstantValue');</script>
+<script>$include('./partial-echo-const.jhp');</script>

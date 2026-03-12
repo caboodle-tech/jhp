@@ -1,0 +1,3 @@
+<p>Before</p>
+<script>$include('./partial.html');</script>
+<p>After</p>

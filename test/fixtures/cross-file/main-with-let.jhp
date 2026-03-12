@@ -1,0 +1,4 @@
+<script>
+let sharedVar = 'FromMain';
+$include('./partial-echo.jhp');
+</script>

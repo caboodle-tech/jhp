@@ -1,0 +1,2 @@
+<script>$context('sharedVar', 'ContextValue');</script>
+<script>$include('./partial-echo.jhp');</script>

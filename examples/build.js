@@ -1,6 +1,5 @@
 /**
- * Builds the example site: processes all .jhp files in examples/src and writes
- * HTML to examples/www. Used by the demo script and by the example-site test.
+ * Example site build. Run directly to build into examples/www; import { buildExamples } for tests.
  * @module examples/build
  */
 
@@ -8,6 +7,7 @@ import Fs from 'fs';
 import JHP from '../src/jhp.js';
 import Path from 'path';
 import { fileURLToPath } from 'url';
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = Path.dirname(__filename);
 
@@ -73,3 +73,14 @@ export const buildExamples = () => {
 
     return { outputDir, files: written };
 };
+
+const isMain = process.argv[1] && Path.resolve(process.argv[1]) === Path.resolve(__filename);
+if (isMain) {
+    try {
+        buildExamples();
+    } catch (error) {
+        console.error(error);
+        process.exit(1);
+    }
+    console.log('Build completed successfully. Output is in `./examples/www/`.');
+}

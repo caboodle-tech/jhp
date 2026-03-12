@@ -198,7 +198,7 @@ Regardless of which installation method you choose, **you must write code to int
 2. Calls `jhp.process()` for each template file
 3. Writes the output to your desired location
 
-See the [example build script](./examples/index.js) for a complete implementation.
+See the [example build script](./examples/build.js) for a complete implementation.
 
 ### Using Process Options
 

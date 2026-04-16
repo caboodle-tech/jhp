@@ -712,7 +712,6 @@ class JSHypertextPreprocessor {
      * @private
      */
     #preprocessScriptBlock(code) {
-        const currentDeclarations = new Set();
         const injections = [];
         let currentlyProcessingFunction = null;
         let currentBraceDepth = 0;
@@ -782,10 +781,6 @@ class JSHypertextPreprocessor {
                 if (unclosed && variables.length > 0) {
                     const varName = variables[0].name;
                     result = `$.echo(\`<< Error: Unclosed string or template literal. >>\`)\n${varName} = '';`;
-                    if (!line.startsWith('var')) {
-                        currentDeclarations.add(varName);
-                        result += `\n$.context('${varName}', ${varName});`;
-                    }
                 } else {
                     for (const variable of variables) {
                         const varName = variable.name;
@@ -793,9 +788,6 @@ class JSHypertextPreprocessor {
                             const constValue = this.#constants.get(varName);
                             const valueStr = this.#serializeValue(constValue);
                             result = `$.echo(\`<< Error: Attempt to redeclare defined constant '${varName}'. >>\`)\n${varName} = ${valueStr};`;
-                        } else if (!line.startsWith('var')) {
-                            currentDeclarations.add(varName);
-                            result += `\n$.context('${varName}', ${varName});`;
                         }
                     }
                 }
@@ -803,7 +795,10 @@ class JSHypertextPreprocessor {
             } else {
                 // Handle reassignments (non-declaration = ...; use state machine for boundary)
                 const reassignMatch = line.match(this.#regex.reassignment);
-                if (reassignMatch && !processedLine.includes('$')) {
+                const headBeforeAssign = reassignMatch ? line.slice(0, reassignMatch.index) : '';
+                const assignLooksLikeDeclaratorInit = reassignMatch &&
+                    /\b(const|let|var)\s+$/.test(headBeforeAssign);
+                if (reassignMatch && !assignLooksLikeDeclaratorInit && !processedLine.includes('$')) {
                     const varName = reassignMatch[1];
                     const eqIdx = line.indexOf('=', reassignMatch.index);
                     const { endIndex: endIdx } = eqIdx >= 0 ? this.#findStatementEndIndex(line, eqIdx + 1) : { endIndex: -1 };
@@ -813,7 +808,6 @@ class JSHypertextPreprocessor {
                         const valueStr = this.#serializeValue(constValue);
                         processedLine = `$.echo(\`<< Error: Attempt to redeclare defined constant '${varName}'. >>\`)\n${varName} = ${valueStr};`;
                     } else if (!fullMatch.includes('const ') && !fullMatch.includes('let ') && !fullMatch.includes('var ')) {
-                        currentDeclarations.add(varName);
                         processedLine = `${fullMatch}\n$.context('${varName}', ${varName});`;
                     }
                 }
@@ -844,8 +838,9 @@ class JSHypertextPreprocessor {
             modifiedCode = modifiedCode.replace(declPattern, (match, declType, varName) => { return varName; });
         }
 
-        // Final transformations
-        modifiedCode = this.#walkAndReplaceScriptParts(`${injections.join('\n')}\n${modifiedCode}`);
+        // Final transformations (single AST pass; preamble is injected const/var lines, not user template code)
+        const preamble = injections.length > 0 ? `${injections.join('\n')}\n` : '\n';
+        modifiedCode = this.#walkAndReplaceScriptParts(`${preamble}${modifiedCode}`, preamble.length);
         return modifiedCode;
     }
 
@@ -1243,10 +1238,11 @@ class JSHypertextPreprocessor {
 
     /**
      * Walks the AST of a script block and performs various transformations.
-     * @param {string} code JavaScript code to analyze
-     * @returns {string[]} Array of undefined variable names
+     * @param {string} code JavaScript code to analyze (may be prefixed with injected const/var lines)
+     * @param {number} [preambleLength=0] Byte offset where user template code begins; skip context sync for declarations in the preamble only
+     * @returns {string} Transformed code
      */
-    #walkAndReplaceScriptParts(code) {
+    #walkAndReplaceScriptParts(code, preambleLength = 0) {
         /** Skip processing if this is not a script block
          * @deprecated
         if (!code.includes('<script>') &&
@@ -1275,17 +1271,36 @@ class JSHypertextPreprocessor {
                 }
             });
 
-            function walk(node, parent = null) {
-                if (!node || typeof node !== 'object') return;
+            const walk = (node, parent = null) => {
+                if (!node || typeof node !== 'object') {
+                    return;
+                }
 
                 // Don't process identifiers inside arrays
                 if (parent?.type === 'ArrayExpression') {
                     return;
                 }
 
-                // Handle let/const to var conversion
+                // Handle let/const to var conversion; sync simple bindings into template context (one AST pass)
                 if (node.type === 'VariableDeclaration' && (node.kind === 'const' || node.kind === 'let')) {
                     transformations.push([node.start, node.start + node.kind.length, 'var']);
+                    const inForLoopHead = (parent?.type === 'ForStatement' && parent.init === node) ||
+                        ((parent?.type === 'ForInStatement' || parent?.type === 'ForOfStatement' ||
+                            parent?.type === 'ForAwaitOfStatement') && parent.left === node);
+                    if (node.start >= preambleLength && !inForLoopHead) {
+                        const contextLines = [];
+                        for (const decl of node.declarations) {
+                            if (decl.id?.type === 'Identifier') {
+                                const bindingName = decl.id.name;
+                                if (!this.#builtInGlobals.has(bindingName)) {
+                                    contextLines.push(`$.context('${bindingName}', ${bindingName});`);
+                                }
+                            }
+                        }
+                        if (contextLines.length > 0) {
+                            transformations.push([node.end, node.end, `\n${contextLines.join('\n')}`]);
+                        }
+                    }
                 }
 
                 // Handle includes in assignments
@@ -1318,7 +1333,7 @@ class JSHypertextPreprocessor {
                         walk(child, node);
                     }
                 }
-            }
+            };
 
             walk(ast);
 

@@ -1,5 +1,5 @@
 /**
- * Tests for JHP $include: default resolution, root-relative (/) paths, and includePathResolver API.
+ * Tests for JHP $include: default resolution, includeSearchRoots, includePathResolver, and error messages.
  * Run: npm test  (or node --test test/include.test.js)
  * Diagnostics: set NODE_DEBUG=test or use node --test --test-reporter=spec for verbose names.
  */
@@ -306,6 +306,77 @@ test('JHP - includePathResolver and pathing (verbose)', async (t) => {
         const countB = (html.split(second)).length - 1;
         assert.strictEqual(countA, 1, 'first missing include should appear exactly once in output');
         assert.strictEqual(countB, 1, 'second missing include should appear exactly once in output');
+    });
+});
+
+test('JHP - includeSearchRoots', async (t) => {
+    const isr = Path.join(fixturesDir, 'include-search-roots');
+    const primary = Path.join(isr, 'primary');
+    const secondary = Path.join(isr, 'secondary');
+    const roots = [primary, secondary];
+
+    await t.test('relative include: later search root supplies the file', () => {
+        const jhp = new JHP();
+        const entryPath = Path.join(primary, 'entry.jhp');
+        const html = jhp.process(entryPath, { includeSearchRoots: roots });
+        assert.ok(html.includes('ONLY_IN_SECONDARY_ROOT'));
+    });
+
+    await t.test('leading /: each root is tried in order', () => {
+        const jhp = new JHP();
+        const leadPath = Path.join(primary, 'lead.jhp');
+        const html = jhp.process(leadPath, { includeSearchRoots: roots });
+        assert.ok(html.includes('LEADING_SLASH_VIA_ROOT_ORDER'));
+    });
+
+    await t.test('includePathResolver set: includeSearchRoots is not used (resolver wins)', () => {
+        const jhp = new JHP();
+        const entryPath = Path.join(primary, 'entry.jhp');
+        const swapIn = Path.join(primary, 'swap-via-resolver.html');
+        const html = jhp.process(entryPath, {
+            includeSearchRoots: roots,
+            includePathResolver: (file) => {
+                if (file === 'only-in-secondary.html') {
+                    return swapIn;
+                }
+                return null;
+            }
+        });
+        assert.ok(
+            html.includes('RESOLVER_OVERRIDE_WINS'),
+            'must load swap file via resolver, not the partial under secondary that search roots would use'
+        );
+        assert.ok(
+            !html.includes('ONLY_IN_SECONDARY_ROOT'),
+            'search roots must be bypassed when a resolver is set'
+        );
+    });
+
+    await t.test('invalid includeSearchRoots throws TypeError', () => {
+        const jhp = new JHP();
+        assert.throws(
+            () => {
+                jhp.process('<p>x</p>', { includeSearchRoots: 'not-an-array' });
+            },
+            (e) => {
+                return e instanceof TypeError && e.message.includes('includeSearchRoots');
+            }
+        );
+        assert.throws(
+            () => {
+                jhp.process('<p>x</p>', { includeSearchRoots: ['relative/only'] });
+            },
+            (e) => {
+                return e instanceof TypeError && e.message.includes('absolute');
+            }
+        );
+    });
+
+    await t.test('`../` at start: resolve only from the including file’s directory, not from search roots', () => {
+        const jhp = new JHP();
+        const subInner = Path.join(primary, 'sub', 'inner.jhp');
+        const html = jhp.process(subInner, { includeSearchRoots: [secondary] });
+        assert.ok(html.includes('PARENT_VIA_DDOT_ONLY'), '../ must find primary/… even when roots skip primary');
     });
 });
 

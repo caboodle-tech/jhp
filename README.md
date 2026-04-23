@@ -152,15 +152,22 @@ For more information on how to properly use these functions, refer to the [examp
 
 ## Include paths
 
-Paths in `$include('…')` are resolved in one of two ways:
+`$include('…')` is resolved in this order (highest priority first):
 
-1. **Default (no `includePathResolver`)**  
-   - Paths starting with `/` are resolved from the **JHP root** (`rootDir` on the `JHP` instance, or the directory of the file being processed on the first `process()` if `rootDir` was not set). They are *not* resolved from the operating system’s filesystem root.  
-   - Other paths are tried relative to the **including file’s directory** first, then the same root used for paths that start with `/`, when that differs.  
-   An explicit `rootDir` in `new JHP({ rootDir: '/path/to/your/content' })` is the best way to make “root” match your project’s **template (or content) root**, especially for path strings that start with `/`. The [example build](./examples/build.js) uses this for `/partials/...` includes.
+1. **`includePathResolver` (optional)**  
+   Pass `includePathResolver( file, currentDir )` in the `options` to `process()`. When it is set, it **fully replaces** all other include path logic for that run. Return an absolute path (or a path resolvable with `currentDir`) to a real file, or `null` if the include cannot be resolved. Nested includes use the same function; `currentDir` is the directory of the file that issued each `$include`. Use this for custom policy, security checks, or behavior that is not a simple list of roots. The option is cleared after each `process()`.
 
-2. **Host override (`includePathResolver`)**  
-   You may pass `includePathResolver( file, currentDir )` in **only** the `options` to `process()`. If present, the built-in rules above are **not** used for that run; the function must return a path to a real file (absolute or resolvable with `currentDir`) or `null` if the file cannot be resolved. The same function applies to **nested** includes, with `currentDir` set to the directory of the file that issued each `$include`. This option is for apps that need their own search order (for example, multiple content roots) or stricter path policy. The option is not retained after `process()` returns.
+2. **`includeSearchRoots` (optional, ignored when a resolver is set)**  
+   Pass an array of **absolute** directory strings, e.g. ``[ templateDir, srcDir ]``. If present, the built-in resolver uses them as an **ordered** search:  
+   - If the string is `..` or starts with `../`, it is resolved **only** from the including file’s directory (search roots are not used).  
+   - Other paths: try the including file’s directory first, then each root in order (join the include path, without a leading `/`, to each root).  
+   - Paths that start with `/`: try, under each root in order, the path after the leading `/`.  
+   If nothing matches, the usual single **`#rootDir`** fallback still applies (same as when `includeSearchRoots` is omitted), when that differs from the current directory. Omitted, null, or an empty array leaves behavior as in step 3.
+
+3. **Default (neither a resolver nor search roots, or only legacy behavior)**  
+   - Paths starting with `/` are resolved from the **JHP root** (`rootDir` on the `JHP` instance, or the directory of the file being processed on the first `process()` if `rootDir` was not set). They are *not* the operating system’s filesystem root.  
+   - Other non-absolute paths are tried relative to the **including file’s directory** first, then **`#rootDir`** when that differs.  
+   An explicit `rootDir` in `new JHP({ rootDir: '/path/to/your/content' })` is a good way to make “root” match your project’s **template (or content) root**. The [example build](./examples/build.js) uses this for `/partials/...` includes.
 
 ## Installation
 
@@ -240,7 +247,8 @@ Available options:
 - `postProcessors` - Array of postprocessor functions to apply for this file
 - `cwd` - Current working directory for file resolution
 - `relPath` - Relative path for URL resolution
-- `includePathResolver` - Optional function `( file, currentDir ) => string | null` that replaces the default `$include` path resolution for this `process()` only; see [Include paths](#include-paths)
+- `includePathResolver` - Optional; full override of `$include` path resolution for this `process()` only; see [Include paths](#include-paths)
+- `includeSearchRoots` - Optional array of absolute directory paths, tried in order for built-in resolution when no resolver is set; see [Include paths](#include-paths)
 
 **Note:** Pre-processors operate on the raw JHP structure (before JHP code is replaced), while post-processors operate on the fully parsed DOM after all JHP code has been replaced with HTML. This means pre-processors can access and modify JHP script blocks, while post-processors work with the final HTML structure.
 

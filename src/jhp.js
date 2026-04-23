@@ -213,6 +213,13 @@ class JSHypertextPreprocessor {
      */
     #includePathResolver = null;
 
+    /**
+     * When set; ignored if `#includePathResolver` is set. Each entry must be an absolute path; JHP tries
+     * them in order after the current-file directory, and for leading-`/` include paths. Cleared after each `process()`.
+     * @type {string[]|null}
+     */
+    #includeSearchRoots = null;
+
     /** @type {Set<Function>} Stores temporary pre and post processors for template processing */
     #tmpProcessors = {
         pre: new Set(),
@@ -861,6 +868,10 @@ class JSHypertextPreprocessor {
      *   this `process()` call. It receives the include string and the directory of the file doing the including (as with nested includes). Return an
      *   absolute (or resolvable) path to an existing file, or `null` if the include cannot be resolved. JHP will not fall back to built-in rules
      *   when a resolver is set. Omitted: use the default resolution rules. Cleared after each `process()`.
+     * @param {string[]|null} [options.includeSearchRoots] Optional list of **absolute** directory paths, tried in order when resolving
+     *   built-in includes (omitted or empty: legacy behavior with `#rootDir` only). For relative paths, JHP first tries the including file’s
+     *   directory, then each root. For paths starting with `/`, it tries the path (without the leading `/`) under each root; leading-`..` include
+     *   strings are resolved **only** from the including file’s directory. Ignored when `includePathResolver` is set. Cleared after each `process()`.
      * @param {Function[]} [options.preProcessors] Array of preprocessor functions to add
      * @param {Function[]} [options.postProcessors] Array of postprocessor functions to add
      * @returns {string} Processed template content
@@ -928,6 +939,12 @@ class JSHypertextPreprocessor {
             ? mergedOptions.includePathResolver
             : null;
 
+        if (this.#includePathResolver) {
+            this.#includeSearchRoots = null;
+        } else {
+            this.#assignIncludeSearchRoots(mergedOptions.includeSearchRoots);
+        }
+
         let domResult;
         try {
             // Determine root directory if its not already set
@@ -956,6 +973,7 @@ class JSHypertextPreprocessor {
             domResult = dom.toHtml();
         } finally {
             this.#includePathResolver = null;
+            this.#includeSearchRoots = null;
         }
         return domResult;
     }
@@ -1165,6 +1183,66 @@ class JSHypertextPreprocessor {
     }
 
     /**
+     * Validates `includeSearchRoots` and assigns the private field. Omitted, null, or `[]` means no
+     * search roots (then legacy `#rootDir` fallback applies where it did before).
+     * @param {unknown} roots Value from `process()` options
+     * @private
+     */
+    #assignIncludeSearchRoots(roots) {
+        if (roots === undefined || roots === null) {
+            this.#includeSearchRoots = null;
+            return;
+        }
+        if (!Array.isArray(roots)) {
+            throw new TypeError('includeSearchRoots must be an array of absolute path strings or omitted');
+        }
+        const normalized = [];
+        for (const entry of roots) {
+            if (typeof entry !== 'string' || entry.length === 0) {
+                throw new TypeError('includeSearchRoots entries must be non-empty strings');
+            }
+            if (!Path.isAbsolute(entry)) {
+                throw new TypeError('includeSearchRoots entries must be absolute path strings');
+            }
+            normalized.push(Path.normalize(entry));
+        }
+        this.#includeSearchRoots = normalized.length > 0 ? normalized : null;
+    }
+
+    /**
+     * Tries a single candidate path; returns it if a file exists there.
+     * @param {string} candidate
+     * @returns {string|null}
+     * @private
+     */
+    #includePathIfExists(candidate) {
+        if (Fs.existsSync(candidate)) {
+            return candidate;
+        }
+        return null;
+    }
+
+    /**
+     * Tries a path under each search root, in order.
+     * @param {string} relativeFile Path segment(s) to join to each root (no leading `/`).
+     * @returns {string|null}
+     * @private
+     */
+    #tryIncludeSearchRoots(relativeFile) {
+        if (!this.#includeSearchRoots || this.#includeSearchRoots.length === 0) {
+            return null;
+        }
+        for (const root of this.#includeSearchRoots) {
+            const candidate = Path.resolve(root, relativeFile);
+            const found = this.#includePathIfExists(candidate);
+            if (found) {
+                return found;
+            }
+        }
+        return null;
+    }
+
+    /**
      * Resolves a file path relative to the current directory or root directory.
      * @param {string} file Path to resolve
      * @param {string} currentDir Current working directory
@@ -1187,33 +1265,44 @@ class JSHypertextPreprocessor {
             return null;
         }
 
+        const hasSearchRoots = this.#includeSearchRoots && this.#includeSearchRoots.length > 0;
+
+        // Parent-directory includes; only the including file’s directory (no search roots).
+        if (file === '..' || file.startsWith('../')) {
+            return this.#includePathIfExists(Path.resolve(currentDir, file));
+        }
+
         // Check if it's a root-relative path (starts with /)
         if (file.startsWith('/')) {
-            // Remove the leading slash and resolve from the root directory
             const relativeToRoot = file.substring(1);
-            const resolvedPath = Path.resolve(this.#rootDir, relativeToRoot);
-
-            if (Fs.existsSync(resolvedPath)) {
-                return resolvedPath;
+            if (hasSearchRoots) {
+                return this.#tryIncludeSearchRoots(relativeToRoot);
             }
-            return null;
+            return this.#includePathIfExists(Path.resolve(this.#rootDir, relativeToRoot));
         }
 
         // If it's already an absolute path, return it directly
         if (Path.isAbsolute(file)) {
-            return Fs.existsSync(file) ? file : null;
+            return this.#includePathIfExists(file);
         }
 
         // Try resolving relative to current directory
-        let resolvedPath = Path.resolve(currentDir, file);
-        if (Fs.existsSync(resolvedPath)) {
+        let resolvedPath = this.#includePathIfExists(Path.resolve(currentDir, file));
+        if (resolvedPath) {
             return resolvedPath;
+        }
+
+        if (hasSearchRoots) {
+            const fromRoots = this.#tryIncludeSearchRoots(file);
+            if (fromRoots) {
+                return fromRoots;
+            }
         }
 
         // Fall back to root directory
         if (this.#rootDir !== currentDir) {
-            resolvedPath = Path.resolve(this.#rootDir, file);
-            if (Fs.existsSync(resolvedPath)) {
+            resolvedPath = this.#includePathIfExists(Path.resolve(this.#rootDir, file));
+            if (resolvedPath) {
                 return resolvedPath;
             }
         }

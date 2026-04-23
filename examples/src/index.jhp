@@ -2,7 +2,7 @@
     let title = 'Home';
     let keywords = 'jhp, javascript, html, template';
     let description = 'The home page of this simple JHP test example project.';
-    $include('./partials/header.html');
+    $include('/partials/header.html');
 </script>
 
 <h1>Welcome!</h1>
@@ -16,5 +16,5 @@
 </p>
 
 <script>
-    $include('./partials/footer.html');
+    $include('/partials/footer.html');
 </script>

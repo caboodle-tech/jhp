@@ -35,9 +35,13 @@ const addPostProcessorMessage = (scope) => {
     main.appendChild(div);
 };
 
+const srcDir = Path.join(__dirname, 'src');
+
 const jhp = new JHP({
     postProcessors: [addPostProcessorMessage],
-    preProcessors: [addPreProcessorMessage]
+    preProcessors: [addPreProcessorMessage],
+    /** So `$include('/partials/...')` is rooted at `examples/src`, not the OS root. */
+    rootDir: srcDir
 });
 
 /**
@@ -59,7 +63,6 @@ export const buildExamples = () => {
     const cssDestPath = Path.join(cssDir, 'main.css');
     Fs.copyFileSync(cssSrcPath, cssDestPath);
 
-    const srcDir = Path.join(__dirname, 'src');
     const files = Fs.readdirSync(srcDir).filter((file) => { return file.endsWith('.jhp'); });
     const written = [];
 

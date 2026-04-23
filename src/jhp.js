@@ -207,6 +207,12 @@ class JSHypertextPreprocessor {
     /** @type {string} Root directory for file resolution */
     #rootDir = null;
 
+    /**
+     * When set, replaces built-in include path resolution for the current `process()` run only.
+     * @type {((file: string, currentDir: string) => (string | null)) | null}
+     */
+    #includePathResolver = null;
+
     /** @type {Set<Function>} Stores temporary pre and post processors for template processing */
     #tmpProcessors = {
         pre: new Set(),
@@ -851,6 +857,10 @@ class JSHypertextPreprocessor {
      * @param {Object} [options.context] Initial variables and functions for template context
      * @param {string|null} [options.relPath] Relative path for URL resolution; devs should predetermine this on the initial call
      * @param {string} [options.cwd] Current working directory for file resolution; devs should predetermine this on the initial call
+     * @param {Function} [options.includePathResolver] When provided, this function fully replaces the built-in `$include` path resolution for
+     *   this `process()` call. It receives the include string and the directory of the file doing the including (as with nested includes). Return an
+     *   absolute (or resolvable) path to an existing file, or `null` if the include cannot be resolved. JHP will not fall back to built-in rules
+     *   when a resolver is set. Omitted: use the default resolution rules. Cleared after each `process()`.
      * @param {Function[]} [options.preProcessors] Array of preprocessor functions to add
      * @param {Function[]} [options.postProcessors] Array of postprocessor functions to add
      * @returns {string} Processed template content
@@ -865,6 +875,12 @@ class JSHypertextPreprocessor {
             relPath: null,
             ...options
         };
+
+        if (mergedOptions.includePathResolver !== undefined && mergedOptions.includePathResolver !== null) {
+            if (typeof mergedOptions.includePathResolver !== 'function') {
+                throw new TypeError('includePathResolver must be a function');
+            }
+        }
 
         // Extract specific options
         const {
@@ -908,30 +924,40 @@ class JSHypertextPreprocessor {
             this.#constants.set(key, value);
         }
 
-        // Determine root directory if its not already set
-        const inputIsCodeNotAPath = this.isCodeNotPath(fileOrCode);
-        if (inputIsCodeNotAPath) {
-            if (!this.#rootDir) {
-                this.#rootDir = cwd || process.cwd();
+        this.#includePathResolver = mergedOptions.includePathResolver != null
+            ? mergedOptions.includePathResolver
+            : null;
+
+        let domResult;
+        try {
+            // Determine root directory if its not already set
+            const inputIsCodeNotAPath = this.isCodeNotPath(fileOrCode);
+            if (inputIsCodeNotAPath) {
+                if (!this.#rootDir) {
+                    this.#rootDir = cwd || process.cwd();
+                }
+                this.#cwd = cwd || process.cwd();
+            } else {
+                if (!this.#rootDir) {
+                    this.#rootDir = cwd || Path.dirname(fileOrCode);
+                }
+                this.#cwd = cwd || Path.dirname(fileOrCode);
             }
-            this.#cwd = cwd || process.cwd();
-        } else {
-            if (!this.#rootDir) {
-                this.#rootDir = cwd || Path.dirname(fileOrCode);
-            }
-            this.#cwd = cwd || Path.dirname(fileOrCode);
+
+            // Process the code or file into the buffer
+            this.#processFile(fileOrCode, inputIsCodeNotAPath);
+
+            // Get a new parser instance
+            const parser = new SimpleHtmlParser(this.#jhpTags);
+
+            // Parse the buffer and post-process the DOM
+            const dom = parser.parse(this.#currentBuffer.join('').trim());
+            this.#postProcessFile(dom);
+            domResult = dom.toHtml();
+        } finally {
+            this.#includePathResolver = null;
         }
-
-        // Process the code or file into the buffer
-        this.#processFile(fileOrCode, inputIsCodeNotAPath);
-
-        // Get a new parser instance
-        const parser = new SimpleHtmlParser(this.#jhpTags);
-
-        // Parse the buffer and post-process the DOM
-        const dom = parser.parse(this.#currentBuffer.join('').trim());
-        this.#postProcessFile(dom);
-        return dom.toHtml();
+        return domResult;
     }
 
     /**
@@ -1146,6 +1172,21 @@ class JSHypertextPreprocessor {
      * @private
      */
     #resolvePath(file, currentDir) {
+        if (this.#includePathResolver) {
+            const hostPath = this.#includePathResolver(file, currentDir);
+            if (hostPath == null) {
+                return null;
+            }
+            if (typeof hostPath !== 'string' || hostPath.length === 0) {
+                return null;
+            }
+            const absolute = Path.isAbsolute(hostPath) ? hostPath : Path.resolve(currentDir, hostPath);
+            if (Fs.existsSync(absolute)) {
+                return absolute;
+            }
+            return null;
+        }
+
         // Check if it's a root-relative path (starts with /)
         if (file.startsWith('/')) {
             // Remove the leading slash and resolve from the root directory

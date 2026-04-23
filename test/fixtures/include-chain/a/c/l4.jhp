@@ -1,0 +1,2 @@
+    <p>L4</p>
+    <script>$include('/a/b/final.html');</script>

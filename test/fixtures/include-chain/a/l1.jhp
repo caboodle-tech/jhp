@@ -1,0 +1,2 @@
+    <p>L1</p>
+    <script>$include('/a/l2.jhp');</script>

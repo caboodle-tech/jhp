@@ -1,0 +1,4 @@
+<main>
+    <p>ENTRY</p>
+    <script>$include('./a/l1.jhp');</script>
+</main>

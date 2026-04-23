@@ -1,0 +1,5 @@
+<div class="inner-wrap">
+    <p>INNER_START</p>
+    <script>$include('./sibling.html');</script>
+    <p>INNER_END</p>
+</div>

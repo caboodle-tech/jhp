@@ -1,0 +1,3 @@
+    <p>S4</p>
+    <script>$include('RCH:5');</script>
+    <script>$include('/also-root.html');</script>

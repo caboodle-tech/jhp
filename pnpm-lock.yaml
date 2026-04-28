@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@caboodle-tech/simple-html-parser':
-        specifier: ^2.7.0
-        version: 2.7.0
+        specifier: ^2.8.0
+        version: 2.8.0
       acorn-loose:
         specifier: ^8.5.2
         version: 8.5.2
@@ -33,8 +33,8 @@ importers:
 
 packages:
 
-  '@caboodle-tech/simple-html-parser@2.7.0':
-    resolution: {integrity: sha512-RbKcf0dfWppidYQ/E1QHNgHWgAYfYtUw1brRruF0q/IWHOkz379LjDPQhAwKuqHLVvv6EEusGnoKXGE24rOp4g==}
+  '@caboodle-tech/simple-html-parser@2.8.0':
+    resolution: {integrity: sha512-SaMkjXWmHQwSHBYgfp904aQNLffkE53xJvnm3TRXytpG+IkVgCGA7OaRco29a6Yb0OCNLgNxPnCBxJUEQDEeMA==}
     engines: {node: '>=22.0.0'}
 
   '@eslint-community/eslint-utils@4.9.1':
@@ -442,7 +442,7 @@ packages:
 
 snapshots:
 
-  '@caboodle-tech/simple-html-parser@2.7.0': {}
+  '@caboodle-tech/simple-html-parser@2.8.0': {}
 
   '@eslint-community/eslint-utils@4.9.1(eslint@9.39.4)':
     dependencies:

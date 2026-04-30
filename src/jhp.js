@@ -13,6 +13,21 @@ const packageJsonPath = Path.resolve(__dirname, '../package.json');
 const packageJson = JSON.parse(Fs.readFileSync(packageJsonPath, 'utf8'));
 const VERSION = packageJson.version;
 
+/** @type {ReadonlySet<string>} Allowed `missingBinding` option values */
+const MISSING_BINDING_KINDS = new Set(['emptyString', 'null', 'sentinel', 'undefined']);
+
+/**
+ * Validates `missingBinding` for constructor or `process()`.
+ * @param {unknown} mode Candidate mode
+ * @returns {'sentinel'|'undefined'|'emptyString'|'null'}
+ */
+const assertMissingBindingKind = (mode) => {
+    if (!MISSING_BINDING_KINDS.has(mode)) {
+        throw new TypeError(`missingBinding must be one of: ${Array.from(MISSING_BINDING_KINDS).sort().join(', ')}`);
+    }
+    return /** @type {'sentinel'|'undefined'|'emptyString'|'null'} */ (mode);
+};
+
 /**
  * JavaScript Hypertext Preprocessor (JHP) is a preprocessor that handles HTML files with embedded
  * JavaScript, similar to how PHP manages templates. It provides dynamic preprocessing, managing
@@ -218,6 +233,19 @@ class JSHypertextPreprocessor {
      */
     #includeSearchRoots = null;
 
+    /**
+     * Default for synthesized script `var name = …` when a name appears in script but is not declared, not in
+     * {@link #currentContext}, and not in {@link #constants}. Override per {@link process}.
+     * @type {'sentinel'|'undefined'|'emptyString'|'null'}
+     */
+    #missingBindingOption = 'emptyString';
+
+    /**
+     * Effective missing-binding strategy for the current {@link process} invocation.
+     * @type {'sentinel'|'undefined'|'emptyString'|'null'}
+     */
+    #activeMissingBinding = 'emptyString';
+
     /** @type {Set<Function>} Stores temporary pre and post processors for template processing */
     #tmpProcessors = {
         pre: new Set(),
@@ -233,12 +261,15 @@ class JSHypertextPreprocessor {
      * @param {Boolean} [options.registerJhpProcessors] Whether to register built-in JHP processors (default: true)
      * @param {String[]} [options.jhpTags] Array of custom JHP tags to recognize
      * @param {String} [options.rootDir] Root directory for file resolution
+     * @param {'sentinel'|'undefined'|'emptyString'|'null'} [options.missingBinding] How to synthesize bindings for identifiers
+     *   used in script but not declared or in initial context (`emptyString` recommended for optional template fields)
      */
     constructor(options = {}) {
         // Merge options with defaults
         const mergedOptions = {
             globalConstants: null,
             jhpTags: ['jhp', 'script', 's_'],
+            missingBinding: 'emptyString',
             postProcessors: [],
             preProcessors: [],
             registerJhpProcessors: true,
@@ -250,11 +281,14 @@ class JSHypertextPreprocessor {
         const {
             globalConstants,
             jhpTags,
+            missingBinding,
             postProcessors,
             preProcessors,
             registerJhpProcessors,
             rootDir
         } = mergedOptions;
+
+        this.#missingBindingOption = assertMissingBindingKind(missingBinding);
 
         if (globalConstants) {
             if (globalConstants instanceof Map) {
@@ -851,7 +885,8 @@ class JSHypertextPreprocessor {
 
         // Final transformations (single AST pass; preamble is injected const/var lines, not user template code)
         const preamble = injections.length > 0 ? `${injections.join('\n')}\n` : '\n';
-        modifiedCode = this.#walkAndReplaceScriptParts(`${preamble}${modifiedCode}`, preamble.length);
+        modifiedCode = this.#walkAndReplaceScriptParts(`${preamble}${modifiedCode}`, preamble.length,
+            this.#activeMissingBinding);
         return modifiedCode;
     }
 
@@ -872,6 +907,8 @@ class JSHypertextPreprocessor {
      *   strings are resolved **only** from the including file’s directory. Ignored when `includePathResolver` is set. Cleared after each `process()`.
      * @param {Function[]} [options.preProcessors] Array of preprocessor functions to add
      * @param {Function[]} [options.postProcessors] Array of postprocessor functions to add
+     * @param {'sentinel'|'undefined'|'emptyString'|'null'} [options.missingBinding] Overrides constructor default for this run only for
+     *   synthesized script bindings when an identifier has no declaration and no context binding
      * @returns {string} Processed template content
      */
     process(fileOrCode, options = {}) {
@@ -884,6 +921,10 @@ class JSHypertextPreprocessor {
             relPath: null,
             ...options
         };
+
+        this.#activeMissingBinding = ('missingBinding' in options && options.missingBinding !== undefined)
+            ? assertMissingBindingKind(options.missingBinding)
+            : this.#missingBindingOption;
 
         if (mergedOptions.includePathResolver !== undefined && mergedOptions.includePathResolver !== null) {
             if (typeof mergedOptions.includePathResolver !== 'function') {
@@ -1366,12 +1407,35 @@ class JSHypertextPreprocessor {
     }
 
     /**
+     * Right-hand expression for a synthesized binding when {@link #missingBindingOption missingBinding} applies.
+     * @param {string} name Bound identifier name
+     * @param {'sentinel'|'undefined'|'emptyString'|'null'} kind Strategy
+     * @returns {string} JavaScript RHS source (literal, identifier, or backtick-delimited template literal expression)
+     * @private
+     */
+    #rhsForMissingBinding(name, kind) {
+        switch (kind) {
+            case 'sentinel':
+                return `\`<< Undefined: ${name} >>\``;
+            case 'undefined':
+                return 'undefined';
+            case 'null':
+                return 'null';
+            case 'emptyString':
+            default:
+                return '\'\'';
+        }
+    }
+
+    /**
      * Walks the AST of a script block and performs various transformations.
      * @param {string} code JavaScript code to analyze (may be prefixed with injected const/var lines)
      * @param {number} [preambleLength=0] Byte offset where user template code begins; skip context sync for declarations in the preamble only
+     * @param {'sentinel'|'undefined'|'emptyString'|'null'} missingBinding Effective strategy for synthesized `var name = …` lines
      * @returns {string} Transformed code
+     * @private
      */
-    #walkAndReplaceScriptParts(code, preambleLength = 0) {
+    #walkAndReplaceScriptParts(code, preambleLength = 0, missingBinding = this.#activeMissingBinding) {
         /** Skip processing if this is not a script block
          * @deprecated
         if (!code.includes('<script>') &&
@@ -1481,7 +1545,8 @@ class JSHypertextPreprocessor {
 
             undefinedVars.forEach((name) => {
                 if (!this.#constants.has(name)) {
-                    transformations.push([0, 0, `var ${name} = \`<< Undefined: ${name} >>\`;\n`]);
+                    const rhs = this.#rhsForMissingBinding(name, missingBinding);
+                    transformations.push([0, 0, `var ${name} = ${rhs};\n`]);
                 }
             });
 

@@ -11,6 +11,7 @@ JS Hypertext Preprocessor (JHP) is a **developer-focused JavaScript templating e
 ## Features
 
 - Use **native HTML and JavaScript** for templating.
+- **`missingBinding`** configures how synthesized script bindings behave when a name is used but not declared or in **`context`** ([Missing bindings](#missing-bindings-missingbinding)).
 - Supports **PHP-like behaviors**, such as variable redeclaration across script blocks.
 - Provides a simplified **output buffering system** with `$obOpen` and `$obClose`.
 - Includes flexible **file inclusion** for partials and reusable templates.
@@ -169,6 +170,45 @@ For more information on how to properly use these functions, refer to the [examp
    - Other non-absolute paths are tried relative to the **including file’s directory** first, then **`#rootDir`** when that differs.  
    An explicit `rootDir` in `new JHP({ rootDir: '/path/to/your/content' })` is a good way to make “root” match your project’s **template (or content) root**. The [example build](./examples/build.js) uses this for `/partials/...` includes.
 
+## Missing bindings (`missingBinding`)
+
+Inside a bare `<script>` block, when you reference a name that **is not**:
+
+- Declared (`let`, `const`, or `var`) in template code  
+- Passed in **`process({ context })`**  
+- Defined with **`$define`**
+
+…JHP synthesizes **`var name = …;`** at the top of that script compilation so runtime does not throw **`ReferenceError`**. The **`missingBinding`** option controls what appears on the right-hand side.
+
+Set it **on the processor** as a default, or override **only for one `process()`** call:
+
+```js
+const jhp = new JHP({ missingBinding: 'emptyString' });       // constructor default for all runs
+
+jhp.process('./page.jhp', {
+    cwd: templatesDir,
+    missingBinding: 'sentinel',   // overrides for this invocation only (optional)
+    context: {}
+});
+```
+
+### Supported values
+
+| Value | Synthetic binding | Typical `if (name)` |
+| ----- | ------------------- | ------------------- |
+| **`emptyString`** (default) | `var name = '';` | Falsy |
+| **`undefined`** | `var name = undefined;` | Falsy |
+| **`null`** | `var name = null;` | Falsy |
+| **`sentinel`** | Non-empty diagnostic string **`<< Undefined:`** *yourIdentifier* **`>>`** (legacy JHP style) | Truthy |
+
+**Recommended for optional layout fields:** use the default **`emptyString`** so shared partials (`head.html`, headers) can guard with `if (author)`, `author !== ''`, and similar checks when a route omits **`context`** keys.
+
+**`sentinel` mode** reproduces older JHP behavior: missing names resolve to the visible string **`<< Undefined: identifier >>`**, which is truthy—useful when you deliberately want omissions to surface (typos or missing **`context`**). Prefer echoing sentinel text as **plain output** rather than cramming it into concatenated markup that looks like a tag attribute string; ambiguous `<`/`>` sequences in echoed fragments can confuse later HTML parsing.
+
+Template literals (**`` `${author}` ``**) still coerce values to strings; **`undefined`** becomes **`"undefined"`**—keep explicit guards (`if (author)`) for optional snippets.
+
+Invalid `missingBinding` values throw **`TypeError`**.
+
 ## Installation
 
 JHP is not a standalone tool &ndash; you need to **integrate it into your build process** or server application. You can use JHP in two ways:
@@ -186,7 +226,8 @@ Then import it in your project:
 ```js
 import JHP from '@caboodle-tech/jhp';
 
-const jhp = new JHP(); // <-- This accepts the same options {} as the process method
+// Constructor accepts defaults such as missingBinding ([Missing bindings](#missing-bindings-missingbinding)).
+const jhp = new JHP();
 const html = jhp.process('./template.jhp');
 console.log(html);
 ```
@@ -202,7 +243,8 @@ Then import and use it in your build script:
 ```js
 import JHP from './path/to/jhp.js';
 
-const jhp = new JHP(); // <-- This accepts the same options {} as the process method
+// Constructor accepts defaults such as missingBinding ([Missing bindings](#missing-bindings-missingbinding)).
+const jhp = new JHP();
 const html = jhp.process('./template.jhp');
 console.log(html);
 ```
@@ -241,14 +283,17 @@ const html = jhp.process('./template.jhp', {
 });
 ```
 
-Available options:
+Available options (also see [Missing bindings](#missing-bindings-missingbinding)):
 - `context` - Initial variables and functions for template context (Object or Map)
 - `preProcessors` - Array of preprocessor functions to apply for this file
 - `postProcessors` - Array of postprocessor functions to apply for this file
 - `cwd` - Current working directory for file resolution
 - `relPath` - Relative path for URL resolution
+- `missingBinding` - Overrides the constructor default for **this run only**: how to synthesize `var … = …` for identifiers referenced in script without declaration or `context`; one of **`emptyString`**, **`undefined`**, **`null`**, **`sentinel`**
 - `includePathResolver` - Optional; full override of `$include` path resolution for this `process()` only; see [Include paths](#include-paths)
 - `includeSearchRoots` - Optional array of absolute directory paths, tried in order for built-in resolution when no resolver is set; see [Include paths](#include-paths)
+
+**Constructor defaults:** `new JHP({ … })` accepts **`missingBinding`** (and **`globalConstants`**, **`rootDir`**, **`jhpTags`**, processors, etc.); **`missingBinding`** there applies to every `process()` unless a given call passes its own **`missingBinding`**.
 
 **Note:** Pre-processors operate on the raw JHP structure (before JHP code is replaced), while post-processors operate on the fully parsed DOM after all JHP code has been replaced with HTML. This means pre-processors can access and modify JHP script blocks, while post-processors work with the final HTML structure.
 

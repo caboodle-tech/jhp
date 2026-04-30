@@ -43,5 +43,5 @@
         "test": "node --test test/*.test.js"
     },
     "type": "module",
-    "version": "3.10.0"
+    "version": "3.11.0"
 }

@@ -160,7 +160,6 @@ class JSHypertextPreprocessor {
     /** @type {Object} Regular expressions used for parsing and processing */
     #regex = {
         arrowFunction: /([a-zA-Z_$][\w$]*)\s*=\s*\([^)]*\)\s*=>/,
-        backtickEscape: /`/g,
         conditionalNoParams: /(\$\.?(?:else|end))\([^)]*\)/,
         conditionalWithParams: /(\$\.?(?:if|echo|elseif|include))\(([^)]*)\)/,
         dangerousPatterns: [
@@ -197,8 +196,7 @@ class JSHypertextPreprocessor {
         },
         preprocess: /\$(\w+)/g,
         reassignment: /\b([a-zA-Z_$][\w$]*)\s*=\s*([^;]+);/g,
-        regexSpecialCharactersEscape: /[.*+?^${}()|[\]\\]/g,
-        templateLiteralEscape: /\$\{/g
+        regexSpecialCharactersEscape: /[.*+?^${}()|[\]\\]/g
     };
 
     /** @type {string|null} Relative path for URL resolution */
@@ -1311,7 +1309,8 @@ class JSHypertextPreprocessor {
     }
 
     /**
-     * Safely serialize any JavaScript value for injection into code
+     * Safely serialize any JavaScript value for injection into generated script (preamble const/var lines).
+     * Strings use `JSON.stringify` so backslashes (TeX, paths, etc.) are not interpreted as template-literal escapes.
      * @param {any} value Value to serialize
      * @returns {string} Serialized value safe for code injection
      * @private
@@ -1322,7 +1321,7 @@ class JSHypertextPreprocessor {
 
         switch (typeof value) {
             case 'string':
-                return `\`${value.replace(this.#regex.backtickEscape, '\\`').replace(this.#regex.templateLiteralEscape, '\\${')}\``;
+                return JSON.stringify(value);
             case 'number':
             case 'boolean':
             case 'bigint':

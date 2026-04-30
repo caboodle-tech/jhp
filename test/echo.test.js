@@ -33,4 +33,38 @@ $echo(x);
         const html = jhp.process('<p>Plain</p>');
         assert.ok(html.includes('<p>Plain</p>'));
     });
+
+    await t.test('serialized context strings round-trip TeX escapes (JSON.stringify prelude)', () => {
+        /** Substrings whose leading backslashes must survive template generation, not `\f`/`\n` escapes. */
+        const texLike = '\\frac{a}{b}`and${x}\\\\quote"\\newline\\nabla';
+        const revived = new Function(`var t = ${JSON.stringify(texLike)}; return t;`)();
+        assert.strictEqual(revived, texLike);
+    });
+
+    await t.test('echo preserves Quarto/KaTeX-style sequences from context', () => {
+        const formula = '\\frac{-b \\pm \\sqrt{b^2-4ac}}{2a}';
+        const html = jhp.process(
+            `<script>$context('s', ${JSON.stringify(formula)});</script>\n<script>$echo(s);</script>`,
+            { cwd: process.cwd() }
+        );
+        assert.ok(html.includes(formula), `Expected intact formula in HTML: ${html.slice(0, 500)}`);
+    });
+
+    await t.test('echo preserves backslash+n as literal \\nabla, not newline + abla', () => {
+        const s = '\\nabla f';
+        const html = jhp.process(
+            `<script>$context('s', ${JSON.stringify(s)});</script>\n<script>$echo(s);</script>`,
+            { cwd: process.cwd() }
+        );
+        assert.ok(html.includes(s), html.slice(0, 400));
+    });
+
+    await t.test('options.context strings preserve arbitrary backslashes in echo output', () => {
+        const formula = '\\frac{a}{b}';
+        const html = jhp.process('<script>$echo(formula);</script>', {
+            cwd: process.cwd(),
+            context: { formula }
+        });
+        assert.ok(html.includes(formula), html.slice(0, 400));
+    });
 });
